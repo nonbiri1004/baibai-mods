@@ -1,0 +1,14 @@
+{
+  "name": "baibai-mods",
+  "owner": { "name": "lofi puppy", "url": "https://github.com/nonbiri1004" },
+  "metadata": {
+    "description": "small, quiet claude code mods with the lofi puppy"
+  },
+  "plugins": [
+    {
+      "name": "puppy-bowl",
+      "source": "./puppy-bowl",
+      "description": "the puppy's food bowl above the prompt: how much context is left"
+    }
+  ]
+}

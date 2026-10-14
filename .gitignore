@@ -1,0 +1,5 @@
+# written by claude code when it loads a mod (types for the editor)
+.claude-plugin/types/
+*/.claude-plugin/types/
+node_modules/
+.DS_Store
