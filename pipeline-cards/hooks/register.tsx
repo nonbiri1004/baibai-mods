@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Problem, Snapshot, Status } from '../types'
-import { picture, W } from './draw'
+import { detailLines, picture, W } from './draw'
 import { ago, expandHome, isStale, parseStatus, sortCards, textBar, titleOf } from './format'
 
 const PANE = 'pipeline-cards'
@@ -59,6 +59,14 @@ function safePicture(s: Status, stale: boolean) {
   }
 }
 
+function safeLines(s: Status): string[] {
+  try {
+    return detailLines(s)
+  } catch {
+    return []
+  }
+}
+
 export const register: Register = (on, options) => {
   const setting = String(options.status_dir ?? '')
 
@@ -85,7 +93,7 @@ export const register: Register = (on, options) => {
 
     // The pane reports its width in character cells; about 8 CSS px per cell.
     const svgWidth = Math.max(280, Math.min(W, ((e.viewport?.columns ?? 90) - 6) * 8))
-    const hasSvg = 'Svg' in ui
+    const hasSvg = e.surface !== 'terminal' && 'Svg' in ui
 
     const card = (s: Status) => {
       const stale = isStale(s, now)
@@ -105,6 +113,8 @@ export const register: Register = (on, options) => {
           {pic && 'Svg' in ui
             ? <ui.Svg source={pic.source} alt={pic.alt} width={svgWidth} height={Math.round((svgWidth * pic.height) / W)} isInteractive />
             : s.progress && <Text mono dimColor>{textBar(s.progress)}</Text>}
+          {/* no picture (the terminal): the same details as text */}
+          {!pic && safeLines(s).map(line => <Text dimColor>{line}</Text>)}
           {(s.waiting ?? []).length > 0 && (
             <Box flexDirection="column">
               <Text color="warning">waiting for you</Text>

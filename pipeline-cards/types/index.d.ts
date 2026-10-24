@@ -1,3 +1,6 @@
+// Any JSON value (what a status file can hold).
+export type Json = string | number | boolean | null | Json[] | { [key: string]: Json }
+
 // One status file, as FORMAT.md describes it (format "pipeline-status", version 1).
 export type State = 'running' | 'idle' | 'waiting' | 'error'
 
@@ -17,7 +20,7 @@ export type Status = {
   waiting?: WaitingItem[]
   last_output?: { label: string; at?: string; path?: string } | null
   next?: string | null
-  detail?: unknown
+  detail?: { [key: string]: Json } | null
 }
 
 // detail of pipeline "music" (lofi-puppy tools/status_export.py)

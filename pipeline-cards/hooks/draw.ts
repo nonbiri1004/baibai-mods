@@ -154,6 +154,29 @@ function videoPicture(s: Status): Picture | null {
   }
 }
 
+// The same details as text, for surfaces without Svg (the terminal).
+export function detailLines(s: Status): string[] {
+  if (s.pipeline === 'music') {
+    const d = (s.detail ?? {}) as MusicDetail
+    const b = d.batches?.[0]
+    if (!b) return []
+    const failed = b.errors ? ` · failed ${b.errors}` : ''
+    const comfy = d.comfy ? ` · comfy ${d.comfy.up ? 'up' : 'down'}` : ''
+    return [`${b.name}: made ${b.generated ?? 0} · ok ${b.ok ?? 0} · to hear ${b.needs_listen ?? 0} · rejected ${b.rejected ?? 0}${failed}${comfy}`]
+  }
+  if (s.pipeline === 'ai-video') {
+    const d = (s.detail ?? {}) as VideoDetail
+    const jobs = d.jobs ?? []
+    if (!jobs.length) return []
+    const lanes = byStage(jobs)
+    const lines = STAGES.filter(st => lanes[st].length).map(st =>
+      `${st}${GATE.has(st) ? ' (you)' : ''}: ${lanes[st].map(j => j.job.split('/').pop() ?? j.job).join(', ')}`)
+    if (d.cap_usd) lines.push(`spent $${(d.spend_usd ?? 0).toFixed(2)} of $${d.cap_usd.toFixed(2)}`)
+    return lines
+  }
+  return []
+}
+
 export function picture(s: Status, isStale: boolean): Picture | null {
   if (s.pipeline === 'music') return musicPicture(s, isStale) ?? progressPicture(s)
   if (s.pipeline === 'ai-video') return videoPicture(s) ?? progressPicture(s)

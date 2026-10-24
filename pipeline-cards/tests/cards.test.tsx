@@ -85,7 +85,10 @@ const PANE = {
 test('the pane draws one card per file and names the files it skipped', { options: { status_dir: '~/status' } }, async ($, on) => {
   const files: Record<string, string> = {
     '/home/me/status/music.json': file({ waiting: [{ id: 'l7', text: 'hear song 7' }] }),
-    '/home/me/status/ai-video.json': file({ pipeline: 'ai-video', state: 'idle', headline: '3 jobs, all done' }),
+    '/home/me/status/ai-video.json': file({
+      pipeline: 'ai-video', state: 'idle', headline: '3 jobs, all done',
+      detail: { spend_usd: 1, cap_usd: 10, jobs: [{ job: 'baibai/ep04', stage: 'final', spend_usd: 1, cap_usd: 10 }] },
+    }),
     '/home/me/status/old.json': '{"schema": 1}',
   }
   mock.env(on, { HOME: '/home/me' })
@@ -112,6 +115,8 @@ test('the pane draws one card per file and names the files it skipped', { option
     expect((await ui.find({ type: 'Text', text: /42\/70 usable/ }))?.text).toBe('05 · 42/70 usable')
     expect(await ui.find({ type: 'Text', text: /hear song 7/ })).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: /3 jobs, all done/ })).toBeTruthy()
+    // the terminal has no pictures: the details come as text there
+    if (surface === 'terminal') expect((await ui.find({ type: 'Text', text: /ep04/ }))?.text).toBe('final (you): ep04')
     expect((await ui.find({ type: 'Text', text: /skipped old\.json/ }))?.text).toMatch(/pipeline-status/)
     expect(await ui.find({ type: 'Text', text: /tmp/ })).toBeFalsy()
     await ui.unmount()
