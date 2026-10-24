@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { byStage } from '../hooks/draw'
+import { byStage, picture } from '../hooks/draw'
 import { expandHome, isStale, parseStatus, sortCards, textBar } from '../hooks/format'
 import type { Status } from '../types'
 
@@ -22,6 +22,13 @@ test('a status file parses; a wrong one says why', () => {
   expect(() => parseStatus(file({ version: 2 }))).toThrow(/version 2/)
   expect(() => parseStatus(file({ state: 'busy' }))).toThrow(/state/)
   expect(() => parseStatus('{"format": "pipel')).toThrow(/not json/)
+})
+
+test('a field of the wrong type is dropped, not fatal', () => {
+  const odd = parseStatus(file({ title: 42, next: 7, progress: { done: 'x' }, last_output: { label: 1 } }))
+  expect([odd.title, odd.next, odd.progress, odd.last_output]).toEqual([undefined, null, null, null])
+  expect(sortCards([odd, parseStatus(file({ pipeline: 'b', title: 'b' }))]).map(s => s.pipeline)).toEqual(['b', 'music'])
+  expect(picture(parseStatus(file({ detail: { batches: [{ name: 'x', strip: 5 }] } })), false)).toBeTruthy()
 })
 
 test('stale only after the time the writer promised', () => {

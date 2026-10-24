@@ -20,8 +20,23 @@ export function parseStatus(text: string): Status {
   if (!STATES.includes(v.state as State)) throw new Error(`"state" must be one of ${STATES.join(', ')}`)
   if (typeof v.headline !== 'string') throw new Error('no "headline"')
   if (v.waiting != null && !Array.isArray(v.waiting)) throw new Error('"waiting" is not a list')
+  // Optional fields of the wrong type are dropped, so one odd field can't break the sorting or the drawing.
+  const str = (x: unknown) => (typeof x === 'string' ? x : undefined)
+  const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : undefined)
+  const p = isObject(v.progress) ? v.progress : null
+  const last = isObject(v.last_output) && typeof v.last_output.label === 'string' ? v.last_output : null
   return {
     ...(v as unknown as Status),
+    title: str(v.title),
+    host: str(v.host),
+    stale_after_sec: num(v.stale_after_sec),
+    next: str(v.next) ?? null,
+    progress: p && num(p.done) != null
+      ? { done: num(p.done)!, total: num(p.total) ?? null, ...(str(p.unit) ? { unit: str(p.unit) } : {}) }
+      : null,
+    last_output: last
+      ? { label: last.label as string, ...(str(last.at) ? { at: str(last.at) } : {}), ...(str(last.path) ? { path: str(last.path) } : {}) }
+      : null,
     waiting: ((v.waiting as unknown[] | undefined) ?? []).filter(isObject).map(w => ({
       id: String(w.id ?? ''),
       text: String(w.text ?? ''),

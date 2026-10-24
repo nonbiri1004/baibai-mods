@@ -79,7 +79,7 @@ function musicPicture(s: Status, isStale: boolean): Picture | null {
   body += `<text class="m px" x="0" y="${H - 4}" font-size="9">${esc([comfy, s.host ?? ''].filter(Boolean).join(' · ').toUpperCase())}</text>`
 
   // 30 squares per row; they shrink so a batch of 220 songs still fits.
-  const strip = b.strip ?? ''
+  const strip = typeof b.strip === 'string' ? b.strip : ''
   const [x0, y0, per] = [120, 6, 30]
   const rows = Math.max(1, Math.ceil(strip.length / per))
   const step = Math.min(16, 86 / rows)

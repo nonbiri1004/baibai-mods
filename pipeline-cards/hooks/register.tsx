@@ -50,6 +50,15 @@ function refresh($: EngineInterface, setting: string): Promise<void> {
   return running
 }
 
+// A detail of an unexpected shape loses its picture, not the whole pane.
+function safePicture(s: Status, stale: boolean) {
+  try {
+    return picture(s, stale)
+  } catch {
+    return null
+  }
+}
+
 export const register: Register = (on, options) => {
   const setting = String(options.status_dir ?? '')
 
@@ -80,7 +89,7 @@ export const register: Register = (on, options) => {
 
     const card = (s: Status) => {
       const stale = isStale(s, now)
-      const pic = hasSvg ? picture(s, stale) : null
+      const pic = hasSvg ? safePicture(s, stale) : null
       const stateColor = s.state === 'error' ? 'error' : s.state === 'waiting' ? 'warning' : s.state === 'running' ? 'success' : undefined
       return (
         <Box key={s.pipeline} flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap="xs">
