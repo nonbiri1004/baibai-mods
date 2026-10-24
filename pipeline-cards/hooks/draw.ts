@@ -62,6 +62,8 @@ function notes(x: number, y: number) {
   ).join('')
 }
 
+export const MAX_SQUARES = 300
+
 const STRIP_COLOR: Record<string, string> = {
   o: 'var(--ok)', l: 'var(--listen)', r: 'var(--reject)', x: 'var(--line)', '?': 'var(--muted)',
 }
@@ -78,8 +80,10 @@ function musicPicture(s: Status, isStale: boolean): Picture | null {
   const comfy = d.comfy ? (d.comfy.up ? 'comfy up' : 'comfy down') : ''
   body += `<text class="m px" x="0" y="${H - 4}" font-size="9">${esc([comfy, s.host ?? ''].filter(Boolean).join(' · ').toUpperCase())}</text>`
 
-  // 30 squares per row; they shrink so a batch of 220 songs still fits.
-  const strip = typeof b.strip === 'string' ? b.strip : ''
+  // 30 squares per row; they shrink so a batch of 220 songs still fits. Past MAX_SQUARES only the
+  // newest are drawn, so the squares keep a size and the SVG stays under the element's size limit.
+  const all = typeof b.strip === 'string' ? b.strip : ''
+  const strip = all.slice(-MAX_SQUARES)
   const [x0, y0, per] = [120, 6, 30]
   const rows = Math.max(1, Math.ceil(strip.length / per))
   const step = Math.min(16, 86 / rows)
@@ -91,6 +95,7 @@ function musicPicture(s: Status, isStale: boolean): Picture | null {
       : `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${size.toFixed(1)}" height="${size.toFixed(1)}" rx="1" fill="${STRIP_COLOR[c] ?? 'var(--line)'}"/>`
   })
   if (!strip) body += `<text class="m" x="${x0}" y="40" font-size="11">no songs yet</text>`
+  if (all.length > strip.length) body += `<text class="m" x="${W}" y="${H - 18}" font-size="9" text-anchor="end">newest ${strip.length} of ${all.length}</text>`
   const legend: [string, string][] = [['ok', 'var(--ok)'], ['to hear', 'var(--listen)'], ['rejected', 'var(--reject)']]
   legend.forEach(([name, fill], i) => {
     body += `<rect x="${x0 + i * 78}" y="${H - 12}" width="8" height="8" rx="1" fill="${fill}"/>` +

@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { byStage, picture } from '../hooks/draw'
+import { byStage, MAX_SQUARES, picture } from '../hooks/draw'
 import { expandHome, isStale, parseStatus, sortCards, textBar } from '../hooks/format'
 import type { Status } from '../types'
 
@@ -29,6 +29,15 @@ test('a field of the wrong type is dropped, not fatal', () => {
   expect([odd.title, odd.next, odd.progress, odd.last_output]).toEqual([undefined, null, null, null])
   expect(sortCards([odd, parseStatus(file({ pipeline: 'b', title: 'b' }))]).map(s => s.pipeline)).toEqual(['b', 'music'])
   expect(picture(parseStatus(file({ detail: { batches: [{ name: 'x', strip: 5 }] } })), false)).toBeTruthy()
+})
+
+test('a huge batch keeps its squares a size and the svg small', () => {
+  for (const c of ['e', 'o']) {
+    const pic = picture(parseStatus(file({ detail: { batches: [{ name: 'x', strip: c.repeat(5000) }] } })), false)!
+    expect(pic.source.length).toBeLessThan(131072)
+    expect(pic.source).not.toMatch(/(width|height)="-/)
+    expect(pic.source).toContain(`newest ${MAX_SQUARES} of 5000`)
+  }
 })
 
 test('stale only after the time the writer promised', () => {
