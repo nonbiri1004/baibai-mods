@@ -9,6 +9,7 @@ each one does one useful thing and stays out of the way. they're free and open; 
 | mod | what it does |
 | --- | --- |
 | [puppy-bowl](puppy-bowl) | the puppy's food bowl above the prompt: how much context is left, and a `compact` button when it's almost empty |
+| [puppy-todo](puppy-todo) | a to-do pane beside the chat: what this conversation is for, questions waiting on you, open PRs, and one shared list every conversation writes to |
 
 ## install
 
@@ -16,6 +17,7 @@ in a claude code session in your terminal:
 
 ```
 /plugin install puppy-bowl --marketplace nonbiri1004/baibai-mods
+/plugin install puppy-todo --marketplace nonbiri1004/baibai-mods
 ```
 
 answer `y` to add the marketplace, then pick a scope (user = every session). it works in the terminal and in the desktop app's code tab once installed.
