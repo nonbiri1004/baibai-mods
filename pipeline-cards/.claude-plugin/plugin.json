@@ -1,0 +1,22 @@
+{
+  "name": "pipeline-cards",
+  "version": "0.1.0",
+  "description": "a pane with one card per production pipeline, read from small status files",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "lofi puppy",
+    "url": "https://github.com/nonbiri1004"
+  },
+  "homepage": "https://github.com/nonbiri1004/baibai-mods/tree/main/pipeline-cards",
+  "repository": "https://github.com/nonbiri1004/baibai-mods",
+  "license": "MIT",
+  "keywords": ["pipeline", "status", "dashboard", "puppy", "lofi"],
+  "userConfig": {
+    "status_dir": {
+      "type": "string",
+      "title": "Status folder",
+      "description": "The folder your pipelines write their status files into (see FORMAT.md). ~ is your home folder.",
+      "default": ""
+    }
+  }
+}
