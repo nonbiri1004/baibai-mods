@@ -2,6 +2,19 @@
 import type { Item, Kind, Pr, Talk } from '../types'
 
 export const KINDS: readonly Kind[] = ['todo', 'ask', 'later']
+// the puppy at the top of the pane, no headphones (a to-do isn't music, so no orange either):
+// calm most of the time, hello while a conversation waits on you, happy when nothing is left
+export type Mood = 'calm' | 'hello' | 'happy'
+export const FACES: Record<Mood, string> = { calm: '•ᴥ•', hello: '°ᴥ°', happy: '^ᴥ^' }
+
+export function mood(waiting: number, open: number): Mood {
+  if (waiting > 0) {
+    return 'hello'
+  }
+
+  return open === 0 ? 'happy' : 'calm'
+}
+
 // done items stay visible this long, then only the file remains
 export const DONE_DAYS = 3
 const DAY = 86_400_000

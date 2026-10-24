@@ -2,11 +2,9 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Item, Kind, Pr, Talk, View } from '../types'
-import { KINDS, ago, byProject, clip, clockTime, newId, parseItem, parsePrs, parseScan, projectOf, shown } from './todo'
+import { FACES, KINDS, ago, byProject, clip, clockTime, mood, newId, parseItem, parsePrs, parseScan, projectOf, shown } from './todo'
 
 const PANE = 'puppy-todo'
-// the puppy's orange (--phones in shared/theme.css): the one accent
-const PHONES = '#e07b35'
 // conversations older than this, or past this many, are left out of "waiting on you"
 const TALK_DAYS = 14
 const TALK_MAX = 40
@@ -353,7 +351,7 @@ export const register: Register = on => {
     const others = list.filter(i => i.session?.id !== v.here.id)
     const waiting = v.talks.filter(t => t.ask)
     const head = (text: string, count?: number) => (
-      <Text bold color={PHONES}>
+      <Text bold>
         {text}
         {count !== undefined ? <Text dimColor> {count}</Text> : null}
       </Text>
@@ -375,11 +373,23 @@ export const register: Register = on => {
     )
 
     if (v.at === null) {
-      return <Text dimColor>the puppy is sniffing around…</Text>
+      return <Text dimColor>{FACES.calm} sniffing around…</Text>
     }
+    const open = others.filter(i => i.status === 'open').length + mine.filter(i => i.status === 'open').length
+    const face = mood(waiting.length, open + v.prs.length)
+    const said = {
+      hello: `${waiting.length} waiting on you`,
+      happy: 'all clear',
+      calm: `${open + v.prs.length} open`,
+    }[face]
 
     return (
       <Box flexDirection="column" gap={1}>
+        <Text>
+          {FACES[face]}
+          <Text dimColor> {said}</Text>
+        </Text>
+
         <Box flexDirection="column">
           {head('this conversation')}
           <Text>

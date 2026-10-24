@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { byProject, newId, parseItem, parsePrs, parseScan, projectOf, shown } from '../hooks/todo'
+import { FACES, byProject, mood, newId, parseItem, parsePrs, parseScan, projectOf, shown } from '../hooks/todo'
 
 const NOW = Date.parse('2026-10-24T14:30:00Z')
 const wrap = (recap: string, ask?: string) =>
@@ -69,4 +69,12 @@ test('gh output becomes PR rows', () => {
   const prs = parsePrs('[{"number":78,"title":"Log","url":"https://x/78","isDraft":false,"repository":{"name":"baibai-tools"}}]')
   expect(prs).toEqual([{ repo: 'baibai-tools', number: 78, title: 'Log', url: 'https://x/78', isDraft: false }])
   expect(parsePrs('oops')).toEqual([])
+})
+
+test('the puppy says hello while you are waited on, and is happy when all is clear', () => {
+  expect(mood(2, 5)).toBe('hello')
+  expect(mood(0, 3)).toBe('calm')
+  expect(mood(0, 0)).toBe('happy')
+  // no headphones: the face has no ◖◗ ear cups
+  expect(Object.values(FACES).join('')).not.toMatch(/[◖◗]/)
 })

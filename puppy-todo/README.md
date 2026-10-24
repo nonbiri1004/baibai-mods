@@ -5,6 +5,8 @@ one quiet pane beside the chat that answers two things when you come back to a c
 - **this conversation**: its title, what you first asked here, its last recap, and what is still open from it.
 - **everywhere**: questions other conversations are waiting on you for, your open PRs, and the shared to-do list for every project.
 
+a small puppy sits at the top: `•ᴥ•` most of the time, `°ᴥ°` while a conversation is waiting on you, `^ᴥ^` when nothing is left. no headphones here; those are for the music.
+
 it opens by itself when a session starts. `/todo` opens it again; `/todo <text>` adds a to-do for this conversation.
 
 ## where each part comes from
