@@ -3,5 +3,5 @@
 */.claude-plugin/types/
 node_modules/
 .DS_Store
-# worktrees for parallel work
+# git worktrees for parallel work
 .claude/worktrees/

@@ -1,0 +1,61 @@
+# the status file format
+
+every pipeline writes one small json file into one shared folder. the mod reads every `*.json` in that folder and draws one card per file. the mod never runs a pipeline and never writes into the folder.
+
+```
+<status folder>/
+  music.json       ← one pipeline
+  ai-video.json    ← another
+```
+
+## the file
+
+```json
+{
+  "format": "pipeline-status",
+  "version": 1,
+  "pipeline": "music",
+  "title": "music",
+  "host": "studio-mac",
+  "updated": "2026-10-24T22:40:00+08:00",
+  "stale_after_sec": 360,
+  "state": "running",
+  "headline": "05_autumn · 42/70 usable",
+  "progress": { "done": 42, "total": 70, "unit": "usable songs" },
+  "waiting": [{ "id": "listen-7", "text": "hear song 7", "since": "2026-10-24T21:10:00+08:00" }],
+  "last_output": { "label": "song 88 ok", "at": "2026-10-24T22:38:12+08:00" },
+  "next": "keep making songs",
+  "detail": {}
+}
+```
+
+| field | must have | what it is |
+| --- | --- | --- |
+| `format` | yes | always `"pipeline-status"`; a file without it is not a card |
+| `version` | yes | `1`. a new version only when a field above changes meaning; new fields can be added in version 1 |
+| `pipeline` | yes | short id, lowercase, `a-z 0-9 -`; the file name is `<pipeline>.json` |
+| `title` | no | the card's title; `pipeline` when missing |
+| `host` | no | which computer wrote it |
+| `updated` | yes | iso 8601 time with the offset, when the file was written |
+| `stale_after_sec` | no | after this many seconds with no new file, the card says the pipeline has gone quiet. leave it out for a pipeline that only writes when you run a command |
+| `state` | yes | `running` (working now), `idle` (nothing to do), `waiting` (stopped until you do something), `error` (stopped by a problem) |
+| `headline` | yes | one short line: what it is doing now |
+| `progress` | no | `{ done, total, unit }` for a progress bar; `total` can be `null` when there is no end |
+| `waiting` | no | things only you can do (listen, approve, drop a file in). `id` stays the same while the item waits, so a later to-do or button can point at it |
+| `last_output` | no | the newest thing it made: `{ label, at, path? }` |
+| `next` | no | the next step, in words |
+| `detail` | no | anything the pipeline wants to show more of. the mod draws a few known ones (below); for others it shows nothing extra |
+
+## writing it
+
+- write a temp file in the same folder, then rename it over the old one (`os.replace` in python, `fs.renameSync` in node). the reader and a sync tool then never see half a file.
+- write it often enough for `stale_after_sec`, or after every command.
+- keep it small (under 1 mb). it is a status, not a log; a few tail lines are fine.
+- if the folder is synced between computers (google drive, dropbox), any pipeline on any computer can write there. each file has one writer.
+
+## known details
+
+the mod draws these when `pipeline` matches; anything else in `detail` is ignored.
+
+- `music`: `{ comfy: { up, running, pending }, generating, batches: [{ name, strip, est_usable, target_usable, generated, ok, needs_listen, rejected, errors, avg_gen_sec, status_tail }] }`. `strip` has one letter per song: `o` ok, `l` to hear, `r` rejected, `x` left out, `e` failed, `?` being checked.
+- `ai-video`: `{ spend_usd, cap_usd, jobs: [{ job, stage, spend_usd, cap_usd, updated, next }] }`. `stage` is `plan`, `clips`, `voice`, `compose`, `final` or `done`; the card groups jobs by stage.
