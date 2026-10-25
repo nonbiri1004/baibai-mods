@@ -3,7 +3,7 @@ import type { EngineInterface, Register } from 'claude-code'
 
 import type { Problem, Snapshot, Status } from '../types'
 import { detailLines, picture, W } from './draw'
-import { ago, expandHome, isStale, parseStatus, sortCards, textBar, titleOf } from './format'
+import { ago, alerts, expandHome, isStale, parseStatus, sortCards, textBar, titleOf } from './format'
 
 const PANE = 'pipeline-cards'
 const REFRESH_MS = 60_000
@@ -41,11 +41,14 @@ export async function loadFolder($: EngineInterface, dir: string): Promise<Snaps
 // One refresh at a time: the timer and the button share the running one,
 // so an older read can never finish last and overwrite a newer one.
 let running: Promise<void> | null = null
-function refresh($: EngineInterface, setting: string): Promise<void> {
+function refresh($: EngineInterface, setting: string, isNotifying: boolean): Promise<void> {
   running ??= (async () => {
     const dir = expandHome(setting.trim(), await $.env.get('HOME'))
+    const prev = await read($, snapshot)
     const next = await loadFolder($, dir)
     await update($, snapshot, () => next)
+    // A toast shows in this conversation only, for ten seconds; each open conversation tells its own.
+    if (isNotifying) for (const line of alerts(prev, next)) $.ui.toast(line, { timeoutMs: 10_000 })
   })().finally(() => { running = null })
   return running
 }
@@ -69,17 +72,18 @@ function safeLines(s: Status): string[] {
 
 export const register: Register = (on, options) => {
   const setting = String(options.status_dir ?? '')
+  const isNotifying = options.notify !== 'off'
 
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'pipelines', description: 'Open the pipeline cards' })
-    void refresh($, setting)
+    void refresh($, setting, isNotifying)
     // Like setInterval in a component's mount: each tick reads the folder again and the pane redraws.
-    $.clock.every(REFRESH_MS, () => refresh($, setting))
+    $.clock.every(REFRESH_MS, () => refresh($, setting, isNotifying))
     return next(e)
   })
 
   on('command.run', { command: 'pipelines' }, async $ => {
-    await refresh($, setting)
+    await refresh($, setting, isNotifying)
     await $.ui.open({ id: PANE, title: 'pipelines' })
     return { text: 'pipeline cards opened.' }
   })
@@ -132,7 +136,7 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="row" justifyContent="space-between">
           <Text dimColor>checked {ago(now - snap.loadedAt)}</Text>
-          <Button key="refresh" label="refresh" hotkey="r" onPress={() => refresh($, setting)} />
+          <Button key="refresh" label="refresh" hotkey="r" onPress={() => refresh($, setting, isNotifying)} />
         </Box>
         {snap.dirError && (
           <Box flexDirection="column">
