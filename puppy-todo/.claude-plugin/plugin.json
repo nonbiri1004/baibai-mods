@@ -1,0 +1,14 @@
+{
+  "name": "puppy-todo",
+  "version": "0.1.0",
+  "description": "one quiet to-do pane for every conversation: what this one is for, questions waiting on you, PRs to merge, and what's left",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "lofi puppy",
+    "url": "https://github.com/nonbiri1004"
+  },
+  "homepage": "https://github.com/nonbiri1004/baibai-mods/tree/main/puppy-todo",
+  "repository": "https://github.com/nonbiri1004/baibai-mods",
+  "license": "MIT",
+  "keywords": ["todo", "sessions", "pane", "puppy", "lofi"]
+}
