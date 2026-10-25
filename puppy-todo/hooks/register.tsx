@@ -478,18 +478,27 @@ async function declare(
 const textOf = (got: { content: unknown[] }) =>
   got.content.map(b => ((b as { type?: string; text?: string }).type === 'text' ? (b as { text: string }).text : '')).join(' ')
 
+// one call to the app, given up after a while: an app call that waits on a permission nobody sees
+// would otherwise leave the row stuck
+const APP_WAIT_MS = 20_000
+
+async function appCall($: EngineInterface, server: string, tool: string, args: Record<string, unknown>) {
+  let timer: { cancel: () => void } | undefined
+  const late = new Promise<never>((_, reject) => {
+    timer = $.clock.after(APP_WAIT_MS, () => reject(new Error('the app did not answer')))
+  })
+  try {
+    return await Promise.race([$.mcp.call(server, tool, args), late])
+  } finally {
+    timer?.cancel()
+  }
+}
+
 // archives one conversation the person pressed archive on. it looks again first (the row may be a
-// minute old), unpins it (the app won't archive a pinned one), and pins it back if archiving fails
+// minute old), unpins it (the app won't archive a pinned one), and pins it back if archiving fails.
+// each step is written on the row, so a step that hangs shows where
 async function archiveConvo($: EngineInterface, id: string): Promise<void> {
   const say = (text: string) => update($, view, was => ({ ...was, archiving: { ...was.archiving, [id]: text } }))
-  await say('checking again…')
-  await refresh($)
-  const c = (await read($, view)).convos?.find(x => x.session.id === id)
-  if (!c || c.verdict.state !== 'ready') {
-    await say(c ? `not archived: ${c.verdict.reasons.join(', ') || 'no longer ready'}` : 'not archived: it is gone from the list')
-
-    return
-  }
   // the app may refuse a mod's archive (auto mode wants a request from the person behind each
   // archive): then the pin goes back and the row says to archive from the sidebar
   const refused = (why: string) =>
@@ -498,27 +507,35 @@ async function archiveConvo($: EngineInterface, id: string): Promise<void> {
       : `not archived: ${clip(why, 80)}`
   let isUnpinned = false
   try {
-    if (c.session.isPinned) {
-      const un = await $.mcp.call('ccd_sidebar', 'set_pinned', { session_id: id, pinned: false })
-      if (un.isError) {
-        await say(refused(textOf(un)))
+    await say('checking again…')
+    await refresh($)
+    const c = (await read($, view)).convos?.find(x => x.session.id === id)
+    if (!c || c.verdict.state !== 'ready') {
+      await say(c ? `not archived: ${c.verdict.reasons.join(', ') || 'no longer ready'}` : 'not archived: it is gone from the list')
 
-        return
+      return
+    }
+    if (c.session.isPinned) {
+      await say('unpinning…')
+      const un = await appCall($, 'ccd_sidebar', 'set_pinned', { session_id: id, pinned: false })
+      if (un.isError) {
+        throw new Error(textOf(un))
       }
       isUnpinned = true
     }
-    const got = await $.mcp.call('ccd_session_mgmt', 'archive_session', { session_id: id, reason: 'puppy-todo: nothing left in it' })
+    await say('archiving…')
+    const got = await appCall($, 'ccd_session_mgmt', 'archive_session', { session_id: id, reason: 'puppy-todo: nothing left in it' })
     if (got.isError) {
       throw new Error(textOf(got))
     }
     await say('archived')
   } catch (err) {
     if (isUnpinned) {
-      await $.mcp.call('ccd_sidebar', 'set_pinned', { session_id: id, pinned: true }).catch(() => undefined)
+      await appCall($, 'ccd_sidebar', 'set_pinned', { session_id: id, pinned: true }).catch(() => undefined)
     }
     await say(refused(err instanceof Error ? err.message : String(err)))
   }
-  await refresh($)
+  void refresh($).catch(() => undefined)
 }
 
 function line(i: Item, prStates: Readonly<Record<string, PrState>>): string {
