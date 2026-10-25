@@ -262,7 +262,7 @@ export function byProject<T extends { project: string }>(list: readonly T[]): [s
   return [...groups.entries()].sort(([a], [b]) => a.localeCompare(b))
 }
 
-// the lines SCAN prints: \x1e<path> starts a file, U stands for something the person typed,
+// the lines SCAN prints: \x1e<path> starts a file, X says it couldn't be read, U stands for something the person typed,
 // C:"<cwd>" is the last working folder, every other line is a whole transcript row
 export function parseScan(out: string, mtimes: ReadonlyMap<string, number>): Talk[] {
   const talks: Talk[] = []
@@ -288,6 +288,10 @@ export function parseScan(out: string, mtimes: ReadonlyMap<string, number>): Tal
       continue
     }
     if (!talk || line === '') {
+      continue
+    }
+    if (line === 'X') {
+      talk.isUnread = true
       continue
     }
     if (line === 'U') {

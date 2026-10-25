@@ -60,11 +60,12 @@ let ghAt = 0
 let ghBin: string | null = null
 let ticking = false
 
-// reads the end of each transcript and prints only what parseScan needs: titles, PR links,
+// reads the end of each transcript and prints only what parseScan needs (X for a file it can't read): titles, PR links,
 // wrap-up rows (recap + question), "U" for each typed prompt (not the notes the app slips in,
 // which start with "<"), and the last working folder
 const SCAN = `for f in "$@"; do
 printf '\\036%s\\n' "$f"
+if [ ! -r "$f" ]; then printf 'X\\n'; continue; fi
 tail -c 1500000 "$f" | LC_ALL=C grep -a -F -e '"type":"custom-title"' -e '"type":"pr-link"' -e '"name":"mcp__ccd_turn__wrap_up","input"' -e '"message":{"role":"user","content":"' | LC_ALL=C grep -a -v '"type":"api-request' | LC_ALL=C awk '/"name":"mcp__ccd_turn__wrap_up","input"/ {print; next} /"message":\\{"role":"user","content":"</ {next} /"message":\\{"role":"user","content":"/ {print "U"; next} {print}'
 c=$(tail -c 30000 "$f" | LC_ALL=C grep -a -o '"cwd":"[^"]*"' | tail -1)
 printf 'C:%s\\n' "$c"
@@ -137,8 +138,11 @@ async function scanTalks($: EngineInterface, files: readonly TranscriptFile[]): 
     const talks = parseScan(scanned.stdout, mtimes)
     stale.forEach((f, i) => {
       const talk = talks[i]
-      if (talk) {
+      // a file that couldn't be read is read again next time, and until then is no transcript
+      if (talk && !talk.isUnread) {
         talkCache.set(f.path, { mtimeMs: f.mtimeMs, talk })
+      } else {
+        talkCache.delete(f.path)
       }
     })
   }
