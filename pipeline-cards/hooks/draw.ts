@@ -9,8 +9,17 @@ export const W = 640
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
 
-// Cut a label to fit; SVG text does not wrap.
-const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+// Cut a label to fit; SVG text does not wrap. n is in Latin letters; a CJK character counts as two.
+const wide = (c: string) => /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/.test(c)
+export function cut(s: string, n: number): string {
+  let used = 0
+  const chars = [...s]
+  for (let i = 0; i < chars.length; i++) {
+    used += wide(chars[i]!) ? 2 : 1
+    if (used > n) return `${chars.slice(0, i).join('').slice(0, Math.max(0, i - 1))}…`
+  }
+  return s
+}
 
 const STYLE = `<style>
   svg{--card:#f8f7f4;--line:#dcdad4;--text:#2a2926;--muted:#6d6a64;--ok:#7f9a72;--listen:#c2a768;--reject:#b98276}
@@ -21,8 +30,10 @@ const STYLE = `<style>
   .px{font-family:ui-monospace,Menlo,monospace;letter-spacing:.5px}
 </style>`
 
+// The width and height in the markup let the pane fit the picture to its own width (never wider
+// than W) and keep the shape; guessing the pane's pixel width from its columns left empty space.
 const svg = (h: number, body: string) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${h}">${STYLE}${body}</svg>`
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${h}" viewBox="0 0 ${W} ${h}">${STYLE}${body}</svg>`
 
 function bar(x: number, y: number, w: number, part: number, fill = 'var(--ok)') {
   const f = Math.max(0, Math.min(1, part)) * w
@@ -99,11 +110,11 @@ function musicPicture(s: Status, isStale: boolean): Picture | null {
   const legend: [string, string][] = [['ok', 'var(--ok)'], ['to hear', 'var(--listen)'], ['rejected', 'var(--reject)']]
   legend.forEach(([name, fill], i) => {
     body += `<rect x="${x0 + i * 78}" y="${H - 12}" width="8" height="8" rx="1" fill="${fill}"/>` +
-      `<text class="m" x="${x0 + 12 + i * 78}" y="${H - 5}" font-size="10">${name}</text>`
+      `<text class="m" x="${x0 + 12 + i * 78}" y="${H - 4}" font-size="12">${name}</text>`
   })
   const pace = b.avg_gen_sec ? `${Math.round(b.avg_gen_sec / 60)} min / song` : ''
   const right = [comfy, pace].filter(Boolean).join(' · ')
-  if (right) body += `<text class="m px" x="${W}" y="${H - 5}" font-size="10" text-anchor="end">${esc(right)}</text>`
+  if (right) body += `<text class="m px" x="${W}" y="${H - 4}" font-size="12" text-anchor="end">${esc(right)}</text>`
   return {
     height: H,
     alt: `${b.name}: ${b.ok ?? 0} ok, ${b.needs_listen ?? 0} to hear, ${b.rejected ?? 0} rejected`,
@@ -129,24 +140,24 @@ function videoPicture(s: Status): Picture | null {
   const lanes = byStage(jobs)
   const colW = W / STAGES.length
   const shown = 4
-  const H = 34 + shown * 18 + 30
+  const H = 36 + shown * 20 + 30
   let body = ''
   STAGES.forEach((st, i) => {
     const x = i * colW
     body += `<rect x="${x + 2}" y="0.5" width="${colW - 4}" height="${H - 31}" rx="6" fill="var(--card)" stroke="var(--line)"${GATE.has(st) ? ' stroke-dasharray="4 3"' : ''}/>`
-    body += `<text class="m px" x="${x + 10}" y="16" font-size="9">${st.toUpperCase()}${GATE.has(st) ? ' · YOU' : ''}</text>`
+    body += `<text class="m px" x="${x + 10}" y="16" font-size="11">${st.toUpperCase()}${GATE.has(st) ? ' · YOU' : ''}</text>`
     const list = lanes[st]
     list.slice(0, shown).forEach((j, k) => {
       const name = j.job.split('/').pop() ?? j.job
-      body += `<text class="${st === 'done' ? 'm' : 't'}" x="${x + 10}" y="${36 + k * 18}" font-size="11">${esc(cut(name, 12))}</text>`
+      body += `<text class="${st === 'done' ? 'm' : 't'}" x="${x + 10}" y="${38 + k * 20}" font-size="14">${esc(cut(name, 12))}</text>`
     })
-    if (list.length > shown) body += `<text class="m" x="${x + 10}" y="${36 + shown * 18}" font-size="10">+${list.length - shown} more</text>`
+    if (list.length > shown) body += `<text class="m" x="${x + 10}" y="${38 + shown * 20}" font-size="12">+${list.length - shown} more</text>`
   })
   const spend = d.spend_usd ?? 0
   const cap = d.cap_usd ?? 0
   if (cap > 0) {
     body += bar(0, H - 14, W - 190, spend / cap, spend / cap > 0.8 ? 'var(--reject)' : 'var(--ok)')
-    body += `<text class="m px" x="${W}" y="${H - 8}" font-size="11" text-anchor="end">spent $${spend.toFixed(2)} of $${cap.toFixed(2)}</text>`
+    body += `<text class="m px" x="${W}" y="${H - 8}" font-size="13" text-anchor="end">spent $${spend.toFixed(2)} of $${cap.toFixed(2)}</text>`
   }
   const waiting = jobs.filter(j => GATE.has(j.stage)).length
   return {

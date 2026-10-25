@@ -91,8 +91,6 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     if (!snap) return <Text dimColor>loading…</Text>
 
-    // The pane reports its width in character cells; about 8 CSS px per cell.
-    const svgWidth = Math.max(280, Math.min(W, ((e.viewport?.columns ?? 90) - 6) * 8))
     const hasSvg = e.surface !== 'terminal' && 'Svg' in ui
 
     const card = (s: Status) => {
@@ -111,7 +109,7 @@ export const register: Register = (on, options) => {
           <Text>{s.headline}</Text>
           {stale && <Text color="warning">no update for {ago(now - Date.parse(s.updated)).replace(' ago', '')}; is {s.host ?? 'the computer'} asleep?</Text>}
           {pic && 'Svg' in ui
-            ? <ui.Svg source={pic.source} alt={pic.alt} width={svgWidth} height={Math.round((svgWidth * pic.height) / W)} isInteractive />
+            ? <ui.Svg source={pic.source} alt={pic.alt} isInteractive />
             : s.progress && <Text mono dimColor>{textBar(s.progress)}</Text>}
           {/* no picture (the terminal): the same details as text */}
           {!pic && safeLines(s).map(line => <Text dimColor>{line}</Text>)}
@@ -125,7 +123,7 @@ export const register: Register = (on, options) => {
           {s.last_output && (
             <Text dimColor>last: {s.last_output.label}{s.last_output.at ? ` · ${ago(now - Date.parse(s.last_output.at))}` : ''}</Text>
           )}
-          {s.next && <Text dimColor>next: {s.next}</Text>}
+          {s.next && !(s.waiting ?? []).some(w => w.text === s.next) && <Text dimColor>next: {s.next}</Text>}
         </Box>
       )
     }
