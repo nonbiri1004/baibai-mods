@@ -15,7 +15,7 @@ the puppy's food bowl, sitting above the prompt in claude code. the food is your
 in a claude code session in your terminal:
 
 ```
-/plugin install puppy-bowl --marketplace nonbiri1004/baibai-mods
+/plugin install puppy-bowl --marketplace nonbiri1004/puppy-mods
 ```
 
 answer `y` to add the marketplace, then pick a scope.

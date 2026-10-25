@@ -1,5 +1,5 @@
 {
-  "name": "baibai-mods",
+  "name": "puppy-mods",
   "owner": {
     "name": "lofi puppy",
     "url": "https://github.com/nonbiri1004"
@@ -19,8 +19,8 @@
       "description": "one quiet to-do pane for every conversation: what this one is for, questions waiting on you, PRs to merge, and what's left"
     },
     {
-      "name": "pipeline-cards",
-      "source": "./pipeline-cards",
+      "name": "puppy-pipelines",
+      "source": "./puppy-pipelines",
       "description": "a pane with one card per production pipeline, read from small status files"
     }
   ]

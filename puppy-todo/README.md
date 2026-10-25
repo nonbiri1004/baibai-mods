@@ -27,12 +27,12 @@ one small json file per item, so two conversations writing at the same time neve
 ```json
 {
   "id": "20261024-2230-k3f9",
-  "text": "merge PR #78 by hand; baibai-tools auto-deploys",
-  "project": "baibai-tools",
+  "text": "merge PR #78 by hand; my-app deploys on merge",
+  "project": "my-app",
   "kind": "todo",
   "status": "open",
-  "session": { "id": "…", "title": "Reusable pixel explainer animation tool", "cwd": "…" },
-  "link": "https://github.com/nonbiri1004/baibai-tools/pull/78",
+  "session": { "id": "…", "title": "Add a dark mode", "cwd": "…" },
+  "link": "https://github.com/you/my-app/pull/78",
   "by": "claude",
   "createdAt": "2026-10-24T14:30:00.000Z",
   "doneAt": "…"
@@ -61,7 +61,7 @@ a line to put in each project's `CLAUDE.md` so conversations keep the list:
 ## install
 
 ```
-/plugin install puppy-todo --marketplace nonbiri1004/baibai-mods
+/plugin install puppy-todo --marketplace nonbiri1004/puppy-mods
 ```
 
 ## license

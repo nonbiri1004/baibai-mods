@@ -62,6 +62,6 @@ export type Snapshot = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'pipeline-cards': { snapshot: Snapshot | null }
+    'puppy-pipelines': { snapshot: Snapshot | null }
   }
 }

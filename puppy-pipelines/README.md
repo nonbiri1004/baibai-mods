@@ -1,4 +1,4 @@
-# pipeline-cards
+# puppy-pipelines
 
 a pane beside the chat with one card per production pipeline: what it is doing now, what waits for you, the last thing it made, and what comes next.
 
@@ -25,7 +25,7 @@ the mod only reads. each pipeline writes one small json file into a folder you p
 in a claude code session in your terminal:
 
 ```
-/plugin install pipeline-cards --marketplace nonbiri1004/baibai-mods
+/plugin install puppy-pipelines --marketplace nonbiri1004/puppy-mods
 ```
 
 answer `y` to add the marketplace, then pick a scope. set **status folder** to the folder your pipelines write into (`~` is your home folder). you can change it later in `/config`.
@@ -39,8 +39,8 @@ answer `y` to add the marketplace, then pick a scope. set **status folder** to t
 ## develop
 
 ```
-claude plugin validate pipeline-cards
-claude plugin test pipeline-cards
+claude plugin validate puppy-pipelines
+claude plugin test puppy-pipelines
 ```
 
 ## license

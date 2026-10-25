@@ -76,9 +76,9 @@ test('video jobs group by stage', () => {
 })
 
 const PANE = {
-  plugin: 'pipeline-cards',
+  plugin: 'puppy-pipelines',
   component: 'Pane',
-  requestId: 'pipeline-cards',
+  requestId: 'puppy-pipelines',
   props: {
     title: 'pipelines',
     isFocused: false,
