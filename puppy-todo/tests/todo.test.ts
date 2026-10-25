@@ -1,31 +1,28 @@
 import { expect, test } from 'claude-code/testing'
 
-import type { Attention, Item, PrState, Talk } from '../types'
+import type { Item, PrState, Talk } from '../types'
 import {
   FACES,
-  attentionFile,
   byProject,
+  declareDone,
+  deleteItem,
   isHere,
-  isSkipped,
+  isOpenItem,
   mood,
   newId,
   newestTalks,
-  occurrence,
   outcomeOf,
-  parseAttention,
   parseItem,
   parsePrState,
   parsePrUrl,
-  parsePrs,
   parseScan,
-  prKey,
-  declareDone,
   prAnswer,
-  reopen,
+  prKey,
   projectOf,
+  recentAsks,
+  reopen,
   saying,
   shown,
-  target,
 } from '../hooks/todo'
 
 const NOW = Date.parse('2026-10-24T14:30:00Z')
@@ -38,9 +35,6 @@ const item = (over: Partial<Item>): Item => ({ id: 'a', text: 'a', project: 'p',
 const PR = { type: 'github-pr', host: 'github.com', repo: 'you/app', number: 8 } as const
 const prItem = (over: Partial<Item> = {}) =>
   item({ schemaVersion: 2, source: PR, completion: { mode: 'source', condition: 'merged' }, ...over })
-const skipOf = (what: string, occ: string, state: Attention['state'] = 'dismissed'): Record<string, Attention> => ({
-  [what]: { version: 1, target: what, state, occurrence: occ, at: '', by: 'person' },
-})
 const states = (s: PrState): Record<string, PrState> => ({ [prKey(PR)]: s })
 
 test('ids sort by time and stay short', () => {
@@ -115,41 +109,6 @@ test('open items first, ended ones fade after a few days', () => {
   expect(byProject([{ project: 'z' }, { project: 'a' }]).map(([p]) => p)).toEqual(['a', 'z'])
 })
 
-test('a skip covers one occurrence: a new question or a changed item comes back', () => {
-  const talk: Talk = { id: 's1', title: 'notes', titles: ['notes'], project: 'p', cwd: '/x', ask: 'merge?', askId: 'toolu_1', prs: [], mtimeMs: 0 }
-  const att = skipOf(target.ask(talk), 'toolu_1')
-  expect(isSkipped(att, target.ask(talk), occurrence.ask(talk))).toBe(true)
-  expect(isSkipped(att, target.ask(talk), occurrence.ask({ ...talk, askId: 'toolu_2' }))).toBe(false)
-
-  const one = item({ id: 'x', text: 'call the vet' })
-  const skipOne = skipOf(target.item(one), occurrence.item(one))
-  expect(isSkipped(skipOne, target.item(one), occurrence.item(one))).toBe(true)
-  expect(isSkipped(skipOne, target.item(one), occurrence.item({ ...one, text: 'call the vet again' }))).toBe(false)
-  // brought back
-  expect(isSkipped(skipOf(target.item(one), occurrence.item(one), 'active'), target.item(one), occurrence.item(one))).toBe(false)
-})
-
-test('skip files: a hash name, and only a well-formed file counts', () => {
-  const name = attentionFile('pr:https://github.com/you/app/pull/8')
-  expect(name).toMatch(/^[0-9a-f]{16}\.json$/)
-  expect(attentionFile('pr:https://github.com/you/app/pull/8')).toBe(name)
-  expect(attentionFile('pr:https://github.com/you/app/pull/9')).not.toBe(name)
-  expect(parseAttention('{"version":1,"target":"item:a","state":"dismissed","occurrence":"x"}')?.target).toBe('item:a')
-  expect(parseAttention('{"version":2,"target":"item:a","state":"dismissed","occurrence":"x"}')).toBe(null)
-  expect(parseAttention('{"version":1,"target":"item:a","state":"done","occurrence":"x"}')).toBe(null)
-})
-
-test('the puppy is happy only when nothing is left, skipped rows included', () => {
-  expect(mood(2, 5)).toBe('hello')
-  expect(mood(0, 3)).toBe('calm')
-  expect(mood(0, 0)).toBe('happy')
-  expect(mood(0, 0, 3)).toBe('calm')
-  expect(saying('calm', 0, 0, 3)).toBe('nothing to show · 3 skipped')
-  expect(saying('calm', 0, 2, 1)).toBe('2 open · 1 skipped')
-  // no headphones: the face has no ◖◗ ear cups
-  expect(Object.values(FACES).join('')).not.toMatch(/[◖◗]/)
-})
-
 test('a question waits until something is typed after it, and keeps its tool use id', () => {
   const out = [
     '\x1e/p/one.jsonl',
@@ -189,12 +148,7 @@ test('a reopened conversation is one conversation: newest transcript wins, its i
   expect(isHere(item({}), here)).toBe(false)
 })
 
-test('github answers become rows and states', () => {
-  const prs = parsePrs(
-    '[{"number":78,"title":"Log","url":"https://x/78","isDraft":false,"updatedAt":"2026-10-24T01:00:00Z","repository":{"name":"tools"}}]',
-  )
-  expect(prs).toEqual([{ repo: 'tools', number: 78, title: 'Log', url: 'https://x/78', isDraft: false, updatedAt: '2026-10-24T01:00:00Z' }])
-  expect(parsePrs('oops')).toEqual([])
+test('github answers become states', () => {
   expect(parsePrState('{"state":"MERGED","mergedAt":"2026-10-24T02:00:00Z","closedAt":"2026-10-24T02:00:00Z"}')).toEqual({
     state: 'MERGED',
     endedAt: '2026-10-24T02:00:00Z',
@@ -213,14 +167,6 @@ test('Codex #1: an item with completion null does not break the list', () => {
   expect(outcomeOf(broken as Item, {}).state).toBe('open')
 })
 
-test('Codex #2: skipped, done, then opened again comes back', () => {
-  const one = item({ id: 'x', text: 'call the vet', schemaVersion: 2, completion: { mode: 'declared' } })
-  const skip = skipOf(target.item(one), occurrence.item(one))
-  const reopened = reopen(declareDone(one))
-  expect(reopened.status).toBe('open')
-  expect(isSkipped(skip, target.item(reopened), occurrence.item(reopened))).toBe(false)
-})
-
 test('Codex #4: when github cannot be asked, the answer and the line agree', () => {
   const known = states({ state: 'MERGED', endedAt: '2026-10-24T12:00:00Z' })
   const answer = prAnswer(prItem(), {}, known)
@@ -228,4 +174,35 @@ test('Codex #4: when github cannot be asked, the answer and the line agree', () 
   expect(outcomeOf(prItem(), answer.states).state).toBe('done')
   expect(answer.said).toContain('could not ask github')
   expect(answer.said).toContain('done')
+})
+
+test('the puppy: hello when another conversation asked, happy when nothing is open', () => {
+  expect(mood(2, 5)).toBe('hello')
+  expect(mood(0, 3)).toBe('calm')
+  expect(mood(0, 0)).toBe('happy')
+  expect(saying(0, 0)).toBe('all clear')
+  expect(saying(2, 3)).toBe('3 to-do · 2 asked you')
+  expect(saying(0, 1)).toBe('1 to-do')
+  // no headphones: the face has no ◖◗ ear cups
+  expect(Object.values(FACES).join('')).not.toMatch(/[◖◗]/)
+})
+
+test('a tick in the pane is the person, not claude writing it down', () => {
+  const one = item({ id: 'x', text: 'call the vet' })
+  expect(declareDone(one, { by: 'person', at: '2026-10-25T01:00:00Z' }).declaration).toEqual({ by: 'person', at: '2026-10-25T01:00:00Z' })
+  expect(declareDone(one, { by: 'person', recordedBy: 'claude', at: 'x' }).declaration?.recordedBy).toBe('claude')
+  expect(reopen(declareDone(one, { by: 'person' })).status).toBe('open')
+})
+
+test('a deleted item is never shown or counted, and its file keeps everything', () => {
+  const gone = deleteItem(item({ id: 'g', text: 'old idea' }), { by: 'person', at: '2026-10-25T01:00:00Z' })
+  expect(gone).toMatchObject({ text: 'old idea', status: 'open', deletedAt: '2026-10-25T01:00:00Z', deletedBy: 'person' })
+  expect(shown([gone, item({ id: 'k' })], {}, NOW).map(i => i.id)).toEqual(['k'])
+  expect(isOpenItem(gone, {})).toBe(false)
+})
+
+test('a question from another conversation fades after two days, newest first', () => {
+  const t = (id: string, mtimeMs: number, ask?: string): Talk => ({ id, title: id, titles: [id], project: 'p', cwd: '/x', prs: [], mtimeMs, ask })
+  const asks = recentAsks([t('old', NOW - 3 * 86_400_000, 'still?'), t('a', NOW - 60_000, 'merge?'), t('b', NOW - 1000, 'which?'), t('none', NOW)], NOW)
+  expect(asks.map(x => x.id)).toEqual(['b', 'a'])
 })

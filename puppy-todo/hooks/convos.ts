@@ -100,8 +100,8 @@ export function isWorktree(cwd: string): boolean {
   return /\/\.claude\/worktrees\/[^/]+\/?$/.test(cwd)
 }
 
-// can it be archived? only when nothing points at unfinished work. anything that can't be read
-// makes it unknown, never ready: archiving removes the conversation's worktree
+// what is still open in a conversation, as facts. no open thing found is "clear", which only says
+// nothing was found, not that it is finished; anything that can't be read makes it unknown
 export function verdictOf(c: {
   session: Session
   talk: Talk | null
@@ -144,12 +144,12 @@ export function verdictOf(c: {
     return { state: 'unknown', reasons: ['could not check its folder'] }
   }
 
-  return { state: 'ready', reasons: [] }
+  return { state: 'clear', reasons: [] }
 }
 
-// ready ones first, oldest first, so a sweep starts with the stalest; then open; then unknown
+// clear ones first, oldest first, so tidying starts with the stalest; then open; then unknown
 export function sortConvos(list: readonly Convo[]): Convo[] {
-  const rank = { ready: 0, open: 1, unknown: 2 }
+  const rank = { clear: 0, open: 1, unknown: 2 }
 
   return [...list].sort((a, b) => rank[a.verdict.state] - rank[b.verdict.state] || a.session.lastActivityMs - b.session.lastActivityMs)
 }

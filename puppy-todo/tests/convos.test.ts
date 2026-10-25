@@ -42,14 +42,14 @@ test('the app list is read loosely', () => {
   expect(parseSessions('nope')).toEqual([])
 })
 
-test('ready only when nothing is left and the folder is clean', () => {
-  expect(verdictOf({ ...base, session: session(), talk: talk() })).toEqual({ state: 'ready', reasons: [] })
+test('clear only when nothing open is found and the folder is clean', () => {
+  expect(verdictOf({ ...base, session: session(), talk: talk() })).toEqual({ state: 'clear', reasons: [] })
   expect(verdictOf({ ...base, session: session(), talk: talk({ ask: 'merge it?' }) }).reasons).toEqual(['asked you: merge it?'])
   expect(verdictOf({ ...base, session: session({ prNumber: 4, prState: 'OPEN' }), talk: talk() }).reasons).toEqual(['PR #4 not merged'])
-  expect(verdictOf({ ...base, session: session({ prNumber: 4, prState: 'MERGED' }), talk: talk() }).state).toBe('ready')
+  expect(verdictOf({ ...base, session: session({ prNumber: 4, prState: 'MERGED' }), talk: talk() }).state).toBe('clear')
   const todo: Item = { id: 'i', text: 'x', project: 'p', kind: 'todo', status: 'open', createdAt: '', session: { id: 't1' } }
   expect(verdictOf({ ...base, items: [todo], session: session(), talk: talk() }).reasons).toEqual(['1 open to-do'])
-  expect(verdictOf({ ...base, items: [todo], isOpenItem: () => false, session: session(), talk: talk() }).state).toBe('ready')
+  expect(verdictOf({ ...base, items: [todo], isOpenItem: () => false, session: session(), talk: talk() }).state).toBe('clear')
 })
 
 test('a worktree with work on it is not ready; one that can not be read is unknown', () => {
@@ -60,7 +60,7 @@ test('a worktree with work on it is not ready; one that can not be read is unkno
     '1 commit not pushed',
   ])
   expect(verdictOf({ ...base, session: s, talk: t, worktree: { state: 'unknown' } }).state).toBe('unknown')
-  expect(verdictOf({ ...base, session: s, talk: t, worktree: { state: 'read', changed: 0, unpushed: 0 } }).state).toBe('ready')
+  expect(verdictOf({ ...base, session: s, talk: t, worktree: { state: 'read', changed: 0, unpushed: 0 } }).state).toBe('clear')
   expect(isWorktree('/r/.claude/worktrees/w')).toBe(true)
   expect(isWorktree('/r')).toBe(false)
   expect(parseWorktree({ exitCode: 0, stdout: ' M a.ts\n?? b.ts\n' }, { exitCode: 0, stdout: '3\n' })).toEqual({
@@ -71,17 +71,17 @@ test('a worktree with work on it is not ready; one that can not be read is unkno
   expect(parseWorktree({ exitCode: 128, stdout: '' }, { exitCode: 0, stdout: '0' })).toEqual({ state: 'unknown' })
 })
 
-test('no last turn found is unknown, never ready; this conversation is never ready', () => {
+test('no last turn found is unknown, never clear; this conversation is never clear', () => {
   expect(verdictOf({ ...base, session: session(), talk: null }).state).toBe('unknown')
   expect(verdictOf({ ...base, session: session(), talk: talk(), isHere: true })).toEqual({ state: 'open', reasons: ['this conversation'] })
 })
 
-test('ready ones first, stalest first', () => {
-  const c = (id: string, state: 'ready' | 'open' | 'unknown', at: number) => ({
+test('clear ones first, stalest first', () => {
+  const c = (id: string, state: 'clear' | 'open' | 'unknown', at: number) => ({
     session: session({ id, lastActivityMs: at }),
     verdict: { state, reasons: [] },
   })
-  expect(sortConvos([c('a', 'open', 1), c('b', 'ready', 9), c('c', 'ready', 2), c('d', 'unknown', 0)]).map(x => x.session.id)).toEqual([
+  expect(sortConvos([c('a', 'open', 1), c('b', 'clear', 9), c('c', 'clear', 2), c('d', 'unknown', 0)]).map(x => x.session.id)).toEqual([
     'c',
     'b',
     'a',

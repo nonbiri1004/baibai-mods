@@ -1,32 +1,38 @@
 // the parts with no $: ids, parsing transcripts and items, sorting. tests import these.
-import type { Attention, Item, Kind, Outcome, Pr, PrSource, PrState, Talk } from '../types'
+import type { Item, Kind, Outcome, PrSource, PrState, Talk } from '../types'
 
 export const KINDS: readonly Kind[] = ['todo', 'ask', 'later']
 // the puppy at the top of the pane, no headphones (a to-do isn't music, so no orange either):
-// calm most of the time, hello while a conversation waits on you, happy only when nothing is left,
-// skipped rows included (a skipped row is hidden, not done)
+// hello while another conversation asked you something, happy when nothing is open, calm otherwise
 export type Mood = 'calm' | 'hello' | 'happy'
 export const FACES: Record<Mood, string> = { calm: '•ᴥ•', hello: '°ᴥ°', happy: '^ᴥ^' }
 
-export function mood(waiting: number, open: number, skipped = 0): Mood {
-  if (waiting > 0) {
+export function mood(asks: number, open: number): Mood {
+  if (asks > 0) {
     return 'hello'
   }
 
-  return open === 0 && skipped === 0 ? 'happy' : 'calm'
+  return open === 0 ? 'happy' : 'calm'
 }
 
 // the words beside the face
-export function saying(face: Mood, waiting: number, open: number, skipped: number): string {
-  const tail = skipped > 0 ? ` · ${skipped} skipped` : ''
-  if (face === 'hello') {
-    return `${waiting} waiting on you${tail}`
-  }
-  if (face === 'happy') {
+export function saying(asks: number, open: number): string {
+  if (asks === 0 && open === 0) {
     return 'all clear'
   }
+  const parts = [`${open} to-do`]
+  if (asks > 0) {
+    parts.push(`${asks} asked you`)
+  }
 
-  return open > 0 ? `${open} open${tail}` : `nothing to show${tail}`
+  return parts.join(' · ')
+}
+
+// a question from another conversation shows this long after it was asked, then fades by itself
+export const ASK_DAYS = 2
+
+export function recentAsks(talks: readonly Talk[], now: number): Talk[] {
+  return talks.filter(t => t.ask && now - t.mtimeMs < ASK_DAYS * DAY).sort((a, b) => b.mtimeMs - a.mtimeMs)
 }
 
 // done items stay visible this long, then only the file remains
@@ -149,8 +155,8 @@ export function outcomeOf(item: Item, prStates: Readonly<Record<string, PrState>
   return { state: 'done', basis: 'legacy', why: 'marked done, nobody recorded who', endedAt: item.doneAt }
 }
 
-// the item after someone says it is done: who said it, who wrote it down, when
-export function declareDone(item: Item, how: { by: string; note?: string; at?: string } = { by: 'person' }): Item {
+// the item after someone says it is done: who said it, who wrote it down (when someone else did), when
+export function declareDone(item: Item, how: { by: string; recordedBy?: string; note?: string; at?: string } = { by: 'person' }): Item {
   const at = how.at ?? new Date().toISOString()
   const { declaration: _gone, doneAt: _alsoGone, ...rest } = item
 
@@ -160,12 +166,21 @@ export function declareDone(item: Item, how: { by: string; note?: string; at?: s
     completion: item.completion ?? { mode: 'declared' },
     status: 'done',
     doneAt: at,
-    declaration: { by: how.by, ...(how.by !== 'claude' ? { recordedBy: 'claude' } : {}), at, ...(how.note ? { note: how.note } : {}) },
+    declaration: {
+      by: how.by,
+      ...(how.recordedBy && how.recordedBy !== how.by ? { recordedBy: how.recordedBy } : {}),
+      at,
+      ...(how.note ? { note: how.note } : {}),
+    },
   }
 }
 
-// the item open again: the old declaration no longer holds, and reopenedAt makes it a new
-// occurrence, so a skip from before it was done doesn't hide it again
+// deleted: never shown again, the file stays (nothing is erased)
+export function deleteItem(item: Item, how: { by: string; at?: string }): Item {
+  return { ...item, schemaVersion: 2, deletedAt: how.at ?? new Date().toISOString(), deletedBy: how.by }
+}
+
+// the item open again: the old declaration no longer holds; reopenedAt keeps when
 export function reopen(item: Item, at: string = new Date().toISOString()): Item {
   const { declaration: _gone, doneAt: _alsoGone, ...rest } = item
 
@@ -194,7 +209,7 @@ const isOpen = (o: Outcome) => o.state === 'open' || o.state === 'unknown'
 
 // open first (oldest first, so nothing sinks), then what ended in the last few days
 export function shown(items: readonly Item[], prStates: Readonly<Record<string, PrState>>, now: number): Item[] {
-  const withOutcome = items.map(i => ({ i, o: outcomeOf(i, prStates) }))
+  const withOutcome = items.filter(i => !i.deletedAt).map(i => ({ i, o: outcomeOf(i, prStates) }))
   const open = withOutcome.filter(x => isOpen(x.o)).sort((a, b) => a.i.id.localeCompare(b.i.id))
   const ended = withOutcome
     .filter(x => !isOpen(x.o) && x.o.endedAt && now - Date.parse(x.o.endedAt) < DONE_DAYS * DAY)
@@ -204,7 +219,7 @@ export function shown(items: readonly Item[], prStates: Readonly<Record<string, 
 }
 
 export function isOpenItem(item: Item, prStates: Readonly<Record<string, PrState>>): boolean {
-  return isOpen(outcomeOf(item, prStates))
+  return !item.deletedAt && isOpen(outcomeOf(item, prStates))
 }
 
 // a conversation as a person knows it: its title and folder. the engine's session id changes
@@ -236,61 +251,6 @@ export function isHere(item: Item, here: { id: string; title: string; cwd: strin
   }
 
   return s.id === here.id || (here.title !== '' && s.title === here.title && s.cwd === here.cwd)
-}
-
-// skips: one row each, and each skip covers one occurrence of it
-export const target = {
-  item: (i: Item) => `item:${i.id}`,
-  ask: (t: Talk) => `ask:${talkKey(t.title, t.cwd)}`,
-  pr: (p: Pr) => `pr:${p.url}`,
-}
-
-// a changed text, a reopened item or a new done rule is a new occurrence
-export function itemOccurrence(i: Item): string {
-  return [i.text, i.status, i.completion?.mode ?? '', i.source ? prKey(i.source as PrSource) : '', i.reopenedAt ?? ''].join('\u0000')
-}
-
-export const occurrence = {
-  item: itemOccurrence,
-  // a new wrap-up question has a new tool use id
-  ask: (t: Talk) => t.askId ?? t.ask ?? '',
-  // new activity on the PR brings it back
-  pr: (p: Pr) => p.updatedAt,
-}
-
-export function isSkipped(attention: Readonly<Record<string, Attention>>, what: string, now: string): boolean {
-  const a = attention[what]
-
-  return a?.state === 'dismissed' && a.occurrence === now
-}
-
-export function parseAttention(text: string): Attention | null {
-  try {
-    const o = JSON.parse(text) as Partial<Attention>
-    if (o.version !== 1 || typeof o.target !== 'string' || typeof o.occurrence !== 'string') {
-      return null
-    }
-    if (o.state !== 'dismissed' && o.state !== 'active') {
-      return null
-    }
-
-    return { version: 1, target: o.target, state: o.state, occurrence: o.occurrence, at: String(o.at ?? ''), by: String(o.by ?? '') }
-  } catch {
-    return null
-  }
-}
-
-// the attention file's name: a hash of the target, so a URL or a title never becomes a path.
-// the file holds the target too, and a file whose target doesn't match is ignored
-export function attentionFile(what: string): string {
-  // FNV-1a, 64 bit
-  let h = 0xcbf29ce484222325n
-  for (const byte of new TextEncoder().encode(what)) {
-    h ^= BigInt(byte)
-    h = (h * 0x100000001b3n) & 0xffffffffffffffffn
-  }
-
-  return `${h.toString(16).padStart(16, '0')}.json`
 }
 
 export function byProject<T extends { project: string }>(list: readonly T[]): [string, T[]][] {
@@ -387,31 +347,6 @@ function wrapUpOf(row: Record<string, unknown>): { recap?: string; ask?: string;
   }
 
   return null
-}
-
-// `gh search prs --json number,title,repository,url,isDraft,updatedAt`
-export function parsePrs(out: string): Pr[] {
-  try {
-    const list = JSON.parse(out) as {
-      number: number
-      title: string
-      url: string
-      isDraft: boolean
-      updatedAt?: string
-      repository: { name: string }
-    }[]
-
-    return list.map(p => ({
-      repo: p.repository.name,
-      number: p.number,
-      title: p.title,
-      url: p.url,
-      isDraft: p.isDraft,
-      updatedAt: p.updatedAt ?? '',
-    }))
-  } catch {
-    return []
-  }
 }
 
 // `gh pr view --json state,mergedAt,closedAt`
