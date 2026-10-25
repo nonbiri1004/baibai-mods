@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { byStage, MAX_SQUARES, picture } from '../hooks/draw'
+import { byStage, cut, MAX_SQUARES, picture } from '../hooks/draw'
 import { expandHome, isStale, parseStatus, sortCards, textBar } from '../hooks/format'
 import type { Status } from '../types'
 
@@ -38,6 +38,13 @@ test('a huge batch keeps its squares a size and the svg small', () => {
     expect(pic.source).not.toMatch(/(width|height)="-/)
     expect(pic.source).toContain(`newest ${MAX_SQUARES} of 5000`)
   }
+})
+
+test('labels are cut by width; a CJK character counts as two', () => {
+  expect(cut('demo_本機測試', 12)).toBe('demo_本機…')
+  expect(cut('ep03', 12)).toBe('ep03')
+  expect(cut('手勢模特兒', 12)).toBe('手勢模特兒')
+  expect(cut('abcdefghijklmn', 12)).toBe('abcdefghijk…')
 })
 
 test('stale only after the time the writer promised', () => {
@@ -84,7 +91,7 @@ const PANE = {
 
 test('the pane draws one card per file and names the files it skipped', { options: { status_dir: '~/status' } }, async ($, on) => {
   const files: Record<string, string> = {
-    '/home/me/status/music.json': file({ waiting: [{ id: 'l7', text: 'hear song 7' }] }),
+    '/home/me/status/music.json': file({ waiting: [{ id: 'l7', text: 'hear song 7' }], next: 'hear song 7' }),
     '/home/me/status/ai-video.json': file({
       pipeline: 'ai-video', state: 'idle', headline: '3 jobs, all done',
       detail: { spend_usd: 1, cap_usd: 10, jobs: [{ job: 'baibai/ep04', stage: 'final', spend_usd: 1, cap_usd: 10 }] },
@@ -113,7 +120,7 @@ test('the pane draws one card per file and names the files it skipped', { option
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect((await ui.find({ type: 'Text', text: /42\/70 usable/ }))?.text).toBe('05 · 42/70 usable')
-    expect(await ui.find({ type: 'Text', text: /hear song 7/ })).toBeTruthy()
+    expect(await ui.findAll({ type: 'Text', text: /hear song 7/ })).toHaveLength(1)   // "next" repeating a waiting item is not shown
     expect(await ui.find({ type: 'Text', text: /3 jobs, all done/ })).toBeTruthy()
     // the terminal has no pictures: the details come as text there
     if (surface === 'terminal') expect((await ui.find({ type: 'Text', text: /ep04/ }))?.text).toBe('final (you): ep04')
