@@ -134,7 +134,11 @@ export function verdictOf(c: {
     reasons.push(`asked you: ${c.talk.ask}`)
   }
   if (c.talk) {
-    const open = c.items.filter(i => c.isOpenItem(i) && isHere(i, { id: c.talk!.id, title: c.session.title, cwd: c.session.cwd }))
+    // any title the conversation had: a to-do written before a rename is still its own
+    const titles = new Set([c.session.title, ...c.talk.titles])
+    const open = c.items.filter(
+      i => c.isOpenItem(i) && [...titles].some(title => isHere(i, { id: c.talk!.id, title, cwd: c.session.cwd })),
+    )
     if (open.length > 0) {
       reasons.push(`${open.length} open to-do${open.length > 1 ? 's' : ''}`)
     }
