@@ -77,9 +77,25 @@ export function folderFiles<T extends { path: string }>(s: Session, files: reado
   return files.filter(f => f.path.startsWith(dir) && !f.path.slice(dir.length).includes('/'))
 }
 
-// every conversation's transcript by time
+// every conversation's transcript by time, each file to one conversation at most: the closest
+// pairs first, so two conversations active a moment apart in one folder never share a transcript
 export function matchByTime(sessions: readonly Session[], files: readonly { path: string; mtimeMs: number }[], projects: string): Map<string, string | null> {
-  return new Map(sessions.map(s => [s.id, pickTranscript(s, files, projects)]))
+  const pairs = sessions.flatMap(s =>
+    folderFiles(s, files, projects)
+      .map(f => ({ id: s.id, path: f.path, gap: Math.abs(f.mtimeMs - s.lastActivityMs) }))
+      .filter(p => p.gap <= SAME_MOMENT_MS),
+  )
+  pairs.sort((a, b) => a.gap - b.gap)
+  const out = new Map<string, string | null>(sessions.map(s => [s.id, null]))
+  const taken = new Set<string>()
+  for (const p of pairs) {
+    if (out.get(p.id) === null && !taken.has(p.path)) {
+      out.set(p.id, p.path)
+      taken.add(p.path)
+    }
+  }
+
+  return out
 }
 
 // `git status --porcelain` lines, and the number of commits on no remote

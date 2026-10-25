@@ -210,13 +210,30 @@ async function readConvos(
   const paths = matchByTime(live, c.files, projects)
   // no file at the moment of the last activity: match the rest by title, leaving out files another
   // conversation already matched
-  const unmatched = live.filter(s => paths.get(s.id) === null)
+  let unmatched = live.filter(s => paths.get(s.id) === null)
   const claimed = new Set([...paths.values()].filter((p): p is string => p !== null))
   const wanted = new Set([...claimed, ...unmatched.flatMap(s => folderFiles(s, c.files, projects).map(f => f.path))])
   const talks = await scanTalks(
     $,
     c.files.filter(f => wanted.has(f.path)),
   )
+  // a file matched by time whose titles don't include the conversation's is someone else's
+  for (const s of live) {
+    const path = paths.get(s.id)
+    const titles = path ? talks.get(path)?.titles : undefined
+    if (path && titles && titles.length > 0 && !titles.includes(s.title)) {
+      paths.set(s.id, null)
+      claimed.delete(path)
+      unmatched = [...unmatched, s]
+    }
+  }
+  // the folders of conversations sent back here may not have been read yet
+  const more = c.files.filter(f => !talks.has(f.path) && unmatched.some(s => folderFiles(s, [f], projects).length > 0))
+  if (more.length > 0) {
+    for (const [path, talk] of await scanTalks($, more)) {
+      talks.set(path, talk)
+    }
+  }
   for (const s of unmatched) {
     const candidates = folderFiles(s, c.files, projects).map(f => ({ ...f, titles: talks.get(f.path)?.titles ?? [] }))
     const path = pickByTitle(s, candidates, claimed)
