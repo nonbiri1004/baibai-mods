@@ -470,27 +470,33 @@ async function archiveConvo($: EngineInterface, id: string): Promise<void> {
 
     return
   }
+  // the app may refuse a mod's archive (auto mode wants a request from the person behind each
+  // archive): then the pin goes back and the row says to archive from the sidebar
+  const refused = (why: string) =>
+    /classifier|refused|denied|not allowed|permission/i.test(why)
+      ? 'the app did not let the mod archive it; archive it from the sidebar'
+      : `not archived: ${clip(why, 80)}`
+  let isUnpinned = false
   try {
     if (c.session.isPinned) {
       const un = await $.mcp.call('ccd_sidebar', 'set_pinned', { session_id: id, pinned: false })
       if (un.isError) {
-        await say(`not archived: could not unpin it (${clip(textOf(un), 80)})`)
+        await say(refused(textOf(un)))
 
         return
       }
+      isUnpinned = true
     }
     const got = await $.mcp.call('ccd_session_mgmt', 'archive_session', { session_id: id, reason: 'puppy-todo: nothing left in it' })
     if (got.isError) {
-      if (c.session.isPinned) {
-        await $.mcp.call('ccd_sidebar', 'set_pinned', { session_id: id, pinned: true }).catch(() => undefined)
-      }
-      await say(`not archived: ${clip(textOf(got), 80)}`)
-
-      return
+      throw new Error(textOf(got))
     }
     await say('archived')
   } catch (err) {
-    await say(`not archived: ${clip(String(err), 80)}`)
+    if (isUnpinned) {
+      await $.mcp.call('ccd_sidebar', 'set_pinned', { session_id: id, pinned: true }).catch(() => undefined)
+    }
+    await say(refused(err instanceof Error ? err.message : String(err)))
   }
   await refresh($)
 }
