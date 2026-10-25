@@ -359,7 +359,7 @@ async function declare(
     return { item, said: answer.said }
   }
   const at = new Date(await $.clock.now()).toISOString()
-  const next = how.isDone ? declareDone(item, { by: how.by, note: how.note, at }) : reopen(item)
+  const next = how.isDone ? declareDone(item, { by: how.by, note: how.note, at }) : reopen(item, at)
   await writeItem($, next)
   await update($, view, was => ({ ...was, items: was.items.map(i => (i.id === id ? next : i)) }))
 

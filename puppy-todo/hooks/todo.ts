@@ -164,11 +164,12 @@ export function declareDone(item: Item, how: { by: string; note?: string; at?: s
   }
 }
 
-// the item open again: the old declaration no longer holds
-export function reopen(item: Item): Item {
+// the item open again: the old declaration no longer holds, and reopenedAt makes it a new
+// occurrence, so a skip from before it was done doesn't hide it again
+export function reopen(item: Item, at: string = new Date().toISOString()): Item {
   const { declaration: _gone, doneAt: _alsoGone, ...rest } = item
 
-  return { ...rest, schemaVersion: 2, completion: item.completion ?? { mode: 'declared' }, status: 'open' }
+  return { ...rest, schemaVersion: 2, completion: item.completion ?? { mode: 'declared' }, status: 'open', reopenedAt: at }
 }
 
 // what to say when someone tries to mark a PR item done: github is asked instead.
@@ -237,7 +238,7 @@ export const target = {
 
 // a changed text, a reopened item or a new done rule is a new occurrence
 export function itemOccurrence(i: Item): string {
-  return [i.text, i.status, i.completion?.mode ?? '', i.source ? prKey(i.source as PrSource) : ''].join('\u0000')
+  return [i.text, i.status, i.completion?.mode ?? '', i.source ? prKey(i.source as PrSource) : '', i.reopenedAt ?? ''].join('\u0000')
 }
 
 export const occurrence = {

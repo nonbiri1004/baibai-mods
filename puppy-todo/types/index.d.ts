@@ -24,6 +24,8 @@ export type Item = {
   completion?: { mode: 'declared' | 'source'; condition?: 'merged' }
   // who said it is done, for declared items; cleared when it opens again
   declaration?: Declaration
+  // when it was last opened again after being done
+  reopenedAt?: string
 }
 
 export type Kind = 'todo' | 'ask' | 'later'
