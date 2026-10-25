@@ -30,7 +30,7 @@ const prItem = item({
 
 const VIEW: View = {
   here: { id: 's2', title: 'notes', project: 'app', cwd: '/x' },
-  talks: [{ id: 't', title: 'games', project: 'g', cwd: '/g', ask: 'make the office?', askId: 'toolu_1', prs: [], mtimeMs: 0 }],
+  talks: [{ id: 't', title: 'games', titles: ['games'], project: 'g', cwd: '/g', ask: 'make the office?', askId: 'toolu_1', prs: [], mtimeMs: 0 }],
   prs: [],
   items: [item({ id: 'mine', text: 'call the vet', session: { id: 's1', title: 'notes', cwd: '/x' } }), prItem, skippedItem],
   prStates: { 'github.com/you/app#8': { state: 'OPEN' } },

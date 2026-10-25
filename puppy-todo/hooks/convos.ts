@@ -44,7 +44,7 @@ export const SAME_MOMENT_MS = 5_000
 
 export function pickTranscript(s: Session, files: readonly { path: string; mtimeMs: number }[], projects: string): string | null {
   const dir = `${projects}/${projectDir(s.cwd)}/`
-  const mine = files.filter(f => f.path.startsWith(dir) && !f.path.slice(dir.length).includes('/'))
+  const mine = folderFiles(s, files, projects)
   let best: { path: string; gap: number } | null = null
   for (const f of mine) {
     const gap = Math.abs(f.mtimeMs - s.lastActivityMs)
@@ -59,6 +59,27 @@ export function pickTranscript(s: Session, files: readonly { path: string; mtime
   const named = `${dir}${s.id.replace(/^local_/, '')}.jsonl`
 
   return mine.some(f => f.path === named) ? named : null
+}
+
+// when no transcript changed at the last activity (the app moves that time when a conversation is
+// pinned or renamed, and writes to a transcript when it opens it again), the newest transcript in its
+// folder that ever had its title, among those no other conversation already matched by time.
+// a resumed conversation has several such files; the newest is its latest
+export function pickByTitle(
+  s: Session,
+  candidates: readonly { path: string; mtimeMs: number; titles: readonly string[] }[],
+  claimed: ReadonlySet<string>,
+): string | null {
+  const same = candidates.filter(c => !claimed.has(c.path) && c.titles.includes(s.title)).sort((a, b) => b.mtimeMs - a.mtimeMs)
+
+  return same[0]?.path ?? null
+}
+
+// the transcripts in a conversation's folder
+export function folderFiles<T extends { path: string }>(s: Session, files: readonly T[], projects: string): T[] {
+  const dir = `${projects}/${projectDir(s.cwd)}/`
+
+  return files.filter(f => f.path.startsWith(dir) && !f.path.slice(dir.length).includes('/'))
 }
 
 // `git status --porcelain` lines, and the number of commits on no remote

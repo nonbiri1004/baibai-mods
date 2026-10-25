@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Item, Session, Talk } from '../types'
-import { isWorktree, parseSessions, parseWorktree, pickTranscript, projectDir, sortConvos, verdictOf } from '../hooks/convos'
+import { folderFiles, isWorktree, parseSessions, parseWorktree, pickByTitle, pickTranscript, projectDir, sortConvos, verdictOf } from '../hooks/convos'
 
 const P = '/h/.claude/projects'
 const session = (over: Partial<Session> = {}): Session => ({
@@ -13,7 +13,7 @@ const session = (over: Partial<Session> = {}): Session => ({
   lastActivityMs: 1_000_000,
   ...over,
 })
-const talk = (over: Partial<Talk> = {}): Talk => ({ id: 't1', title: 'notes', project: 'tools', cwd: '/Users/a/dev/Projects/tools', prs: [], mtimeMs: 0, ...over })
+const talk = (over: Partial<Talk> = {}): Talk => ({ id: 't1', title: 'notes', titles: ['notes'], project: 'tools', cwd: '/Users/a/dev/Projects/tools', prs: [], mtimeMs: 0, ...over })
 const base = { items: [] as Item[], isOpenItem: () => true, worktree: null, isHere: false }
 
 test('a transcript folder is the working folder with - for everything else', () => {
@@ -86,5 +86,23 @@ test('ready ones first, stalest first', () => {
     'b',
     'a',
     'd',
+  ])
+})
+
+test('when the time says nothing, the newest unclaimed transcript that had the title', () => {
+  const dir = `${P}/-Users-a-dev-Projects-tools/`
+  const s = session({ lastActivityMs: 10_000_000 })
+  const c = (name: string, mtimeMs: number, titles: string[]) => ({ path: `${dir}${name}.jsonl`, mtimeMs, titles })
+  // reopened later (newer than the last activity) and renamed: still found
+  expect(pickByTitle(s, [c('old', 9_000_000, ['notes']), c('resumed', 20_000_000, ['first name', 'notes'])], new Set())).toBe(
+    `${dir}resumed.jsonl`,
+  )
+  // a fork that another conversation matched by time is left out
+  expect(pickByTitle(s, [c('mine', 9_000_000, ['notes']), c('fork', 9_500_000, ['notes'])], new Set([`${dir}fork.jsonl`]))).toBe(
+    `${dir}mine.jsonl`,
+  )
+  expect(pickByTitle(s, [c('x', 9_000_000, ['other'])], new Set())).toBe(null)
+  expect(folderFiles(s, [{ path: `${dir}a.jsonl` }, { path: `${P}/-elsewhere/a.jsonl` }, { path: `${dir}sub/a.jsonl` }], P)).toEqual([
+    { path: `${dir}a.jsonl` },
   ])
 })

@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Attention, Convo, Item, Kind, Pr, PrSource, PrState, Session, Talk, View, WorktreeState } from '../types'
-import { isWorktree, parseSessions, parseWorktree, pickTranscript, sortConvos, verdictOf } from './convos'
+import { folderFiles, isWorktree, parseSessions, parseWorktree, pickByTitle, pickTranscript, sortConvos, verdictOf } from './convos'
 import {
   FACES,
   KINDS,
@@ -185,30 +185,34 @@ async function scanTalks($: EngineInterface, files: readonly TranscriptFile[]): 
   return out
 }
 
-// the app's session list, archived ones included; null away from the desktop app
-async function readSessions($: EngineInterface): Promise<Session[] | null> {
-  try {
-    const got = await $.mcp.call('ccd_session_mgmt', 'list_sessions', { include_archived: true, limit: 200 })
-    const block = got.content[0] as { type?: string; text?: string } | undefined
-    if (got.isError || block?.type !== 'text' || !block.text) {
+// the app's open (not archived) conversations; null away from the desktop app. a big list comes back
+// as something other than JSON (the app caps what one call returns), so ask for fewer until it parses
+const SESSION_LIMITS = [150, 80, 40]
+
+async function readSessions($: EngineInterface): Promise<{ list: Session[]; limit: number } | null> {
+  for (const limit of SESSION_LIMITS) {
+    try {
+      const got = await $.mcp.call('ccd_session_mgmt', 'list_sessions', { limit })
+      const block = got.content[0] as { type?: string; text?: string } | undefined
+      if (got.isError || block?.type !== 'text' || !block.text) {
+        return null
+      }
+      const list = parseSessions(block.text)
+      if (list.length > 0 || block.text.trim() === '[]') {
+        return { list, limit }
+      }
+    } catch {
       return null
     }
-
-    return parseSessions(block.text)
-  } catch {
-    return null
   }
+
+  return null
 }
 
-// a title archived everywhere: transcripts don't carry the app's id, so "waiting on you" matches by title.
-// a title that is both archived and live stays shown: hiding a live conversation is worse
-function archivedTitles(sessions: readonly Session[] | null): Set<string> | null {
-  if (!sessions) {
-    return null
-  }
-  const live = new Set(sessions.filter(s => !s.isArchived).map(s => s.title))
-
-  return new Set(sessions.filter(s => s.isArchived && !live.has(s.title)).map(s => s.title))
+// "waiting on you" shows a question only from a conversation that is still open in the app (matched
+// by title: transcripts don't carry the app's id); away from the app, every conversation counts
+function isLiveTitle(sessions: readonly Session[] | null, title: string): boolean {
+  return sessions === null || sessions.some(s => s.title === title)
 }
 
 // a worktree's uncommitted changes and commits on no remote; null when it isn't a worktree or is gone
@@ -236,10 +240,23 @@ async function readConvos(
   const projects = `${await home($)}/.claude/projects`
   const live = c.sessions.filter(s => !s.isArchived)
   const paths = new Map(live.map(s => [s.id, pickTranscript(s, c.files, projects)]))
+  // no file at the moment of the last activity: match the rest by title, leaving out files another
+  // conversation already matched
+  const unmatched = live.filter(s => paths.get(s.id) === null)
+  const claimed = new Set([...paths.values()].filter((p): p is string => p !== null))
+  const wanted = new Set([...claimed, ...unmatched.flatMap(s => folderFiles(s, c.files, projects).map(f => f.path))])
   const talks = await scanTalks(
     $,
-    c.files.filter(f => [...paths.values()].includes(f.path)),
+    c.files.filter(f => wanted.has(f.path)),
   )
+  for (const s of unmatched) {
+    const candidates = folderFiles(s, c.files, projects).map(f => ({ ...f, titles: talks.get(f.path)?.titles ?? [] }))
+    const path = pickByTitle(s, candidates, claimed)
+    paths.set(s.id, path)
+    if (path) {
+      claimed.add(path)
+    }
+  }
 
   return Promise.all(
     live.map(async session => {
@@ -325,7 +342,7 @@ async function refresh($: EngineInterface, isFull = false): Promise<void> {
   const now = await $.clock.now()
   const ownId = await $.session.id()
   const notes: string[] = []
-  const [items, attention, files, sessions, project, cwd] = await Promise.all([
+  const [items, attention, files, got, project, cwd] = await Promise.all([
     readItems($).catch(() => {
       notes.push('could not read ~/.claude/todo/items')
 
@@ -341,7 +358,10 @@ async function refresh($: EngineInterface, isFull = false): Promise<void> {
     projectHere($),
     $.session.cwd(),
   ])
-  const archived = archivedTitles(sessions)
+  const sessions = got?.list ?? null
+  if (got && got.list.length >= got.limit) {
+    notes.push(`showing the newest ${got.limit} conversations`)
+  }
   const recent = files.filter((f, i) => i < TALK_MAX || f.path.endsWith(`/${ownId}.jsonl`))
   const talks = [...(await scanTalks($, recent).catch(() => new Map<string, Talk>())).values()]
   const was = await read($, view)
@@ -362,7 +382,7 @@ async function refresh($: EngineInterface, isFull = false): Promise<void> {
   const own = talks.find(t => t.id === ownId)
   const goal = await firstPrompt($)
   const others = newestTalks(talks).filter(
-    t => t.id !== ownId && t.title !== '' && !(own && t.title === own.title && t.cwd === own.cwd) && !archived?.has(t.title),
+    t => t.id !== ownId && t.title !== '' && !(own && t.title === own.title && t.cwd === own.cwd) && isLiveTitle(sessions, t.title),
   )
   const here = { id: ownId, title: own?.title || clip(goal ?? '', 40), project, cwd, goal, recap: own?.recap }
   const convos = sessions

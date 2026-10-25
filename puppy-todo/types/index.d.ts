@@ -73,6 +73,8 @@ export type Talk = {
   // the transcript's file name without .jsonl (the engine's session id; a reopened conversation gets a new one)
   id: string
   title: string
+  // every title it had (a conversation can be renamed)
+  titles: string[]
   project: string
   cwd: string
   // the last wrap-up recap

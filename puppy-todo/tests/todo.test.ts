@@ -116,7 +116,7 @@ test('open items first, ended ones fade after a few days', () => {
 })
 
 test('a skip covers one occurrence: a new question or a changed item comes back', () => {
-  const talk: Talk = { id: 's1', title: 'notes', project: 'p', cwd: '/x', ask: 'merge?', askId: 'toolu_1', prs: [], mtimeMs: 0 }
+  const talk: Talk = { id: 's1', title: 'notes', titles: ['notes'], project: 'p', cwd: '/x', ask: 'merge?', askId: 'toolu_1', prs: [], mtimeMs: 0 }
   const att = skipOf(target.ask(talk), 'toolu_1')
   expect(isSkipped(att, target.ask(talk), occurrence.ask(talk))).toBe(true)
   expect(isSkipped(att, target.ask(talk), occurrence.ask({ ...talk, askId: 'toolu_2' }))).toBe(false)
@@ -181,7 +181,7 @@ test('a question waits until something is typed after it, and keeps its tool use
 })
 
 test('a reopened conversation is one conversation: newest transcript wins, its items stay here', () => {
-  const t = (id: string, mtimeMs: number, title = 'notes'): Talk => ({ id, title, project: 'p', cwd: '/x', prs: [], mtimeMs })
+  const t = (id: string, mtimeMs: number, title = 'notes'): Talk => ({ id, title, titles: [title], project: 'p', cwd: '/x', prs: [], mtimeMs })
   expect(newestTalks([t('old', 1), t('new', 2), t('other', 1, 'games')]).map(x => x.id)).toEqual(['new', 'other'])
   const here = { id: 'new', title: 'notes', cwd: '/x' }
   expect(isHere(item({ session: { id: 'old', title: 'notes', cwd: '/x' } }), here)).toBe(true)

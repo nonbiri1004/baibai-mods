@@ -321,7 +321,7 @@ export function parseScan(out: string, mtimes: ReadonlyMap<string, number>): Tal
       finish()
       const path = line.slice(1)
       const id = path.slice(path.lastIndexOf('/') + 1).replace(/\.jsonl$/, '')
-      talk = { id, title: '', project: '', cwd: '', prs: [], mtimeMs: mtimes.get(path) ?? 0 }
+      talk = { id, title: '', titles: [], project: '', cwd: '', prs: [], mtimeMs: mtimes.get(path) ?? 0 }
       isOpen = false
       ask = undefined
       askId = undefined
@@ -348,6 +348,9 @@ export function parseScan(out: string, mtimes: ReadonlyMap<string, number>): Tal
     }
     if (row.type === 'custom-title' && typeof row.customTitle === 'string') {
       talk.title = row.customTitle
+      if (!talk.titles.includes(row.customTitle)) {
+        talk.titles.push(row.customTitle)
+      }
     } else if (row.type === 'pr-link' && typeof row.prUrl === 'string') {
       if (!talk.prs.includes(row.prUrl)) {
         talk.prs.push(row.prUrl)
