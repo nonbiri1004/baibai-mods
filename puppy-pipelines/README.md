@@ -15,6 +15,7 @@ the mod only reads. each pipeline writes one small json file into a folder you p
 ```
 
 - cards that wait for you come first, then errors, then running, then idle.
+- when a card turns `waiting`, `error` or quiet, or a waiting card gets a new item, a short notice shows in the corner (once, not every minute). turn it off with **notices** in `/config`.
 - a pipeline that promised to write every few minutes (`stale_after_sec`) and went quiet gets a "quiet" mark, so a sleeping computer doesn't look like it is still working.
 - a file in the folder that isn't a status file is named at the bottom with the reason, never dropped without a word.
 - the folder can be a synced one (google drive, dropbox), so a pipeline on another computer gets a card too.

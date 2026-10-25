@@ -1,8 +1,8 @@
 import { expect, mock, test } from 'claude-code/testing'
 
 import { byStage, cut, MAX_SQUARES, picture } from '../hooks/draw'
-import { expandHome, isStale, parseStatus, sortCards, textBar } from '../hooks/format'
-import type { Status } from '../types'
+import { alerts, expandHome, isStale, parseStatus, sortCards, textBar } from '../hooks/format'
+import type { Snapshot, Status } from '../types'
 
 const base = {
   format: 'pipeline-status',
@@ -45,6 +45,24 @@ test('labels are cut by width; a CJK character counts as two', () => {
   expect(cut('ep03', 12)).toBe('ep03')
   expect(cut('手勢模特兒', 12)).toBe('手勢模特兒')
   expect(cut('abcdefghijklmn', 12)).toBe('abcdefghijk…')
+})
+
+test('alerts: a card turning waiting, error or quiet, and new waiting items', () => {
+  const t = Date.parse(base.updated)
+  const snap = (at: number, ...cards: object[]): Snapshot =>
+    ({ dir: '/s', cards: cards.map(c => parseStatus(file(c))), problems: [], dirError: null, loadedAt: at })
+  const running = snap(t, { state: 'running', stale_after_sec: 360 })
+  expect(alerts(null, running)).toEqual([])                                   // first read: baseline
+  expect(alerts(running, snap(t + 60_000, { state: 'running', stale_after_sec: 360 }))).toEqual([])
+  expect(alerts(running, snap(t, { state: 'waiting', waiting: [{ id: 'a', text: 'hear #7' }] })))
+    .toEqual(['music · waiting: hear #7'])
+  expect(alerts(running, snap(t, { state: 'error', headline: 'comfy is down' }))).toEqual(['music · error: comfy is down'])
+  expect(alerts(running, snap(t + 600_000, { state: 'running', stale_after_sec: 360 }))[0]).toMatch(/^music · quiet: no update for 10m/)
+  const w1 = snap(t, { state: 'waiting', waiting: [{ id: 'a', text: 'hear #7' }] })
+  expect(alerts(w1, snap(t, { state: 'waiting', waiting: [{ id: 'a', text: 'hear #7' }] }))).toEqual([])   // nothing new
+  expect(alerts(w1, snap(t, { state: 'waiting', waiting: [{ id: 'a', text: 'hear #7' }, { id: 'b', text: 'hear #9' }] })))
+    .toEqual(['music · new: hear #9'])
+  expect(alerts(running, snap(t, { state: 'idle' }))).toEqual([])               // back to idle is not news
 })
 
 test('stale only after the time the writer promised', () => {
@@ -141,4 +159,25 @@ test('no folder set: the pane says where to set it', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: /status folder/ }))?.text).toMatch(/no status folder set/)
   await ui.unmount()
+})
+
+for (const notify of ['on', 'off'] as const)
+test(`the timer shows a toast when a card starts waiting (notices ${notify})`, { options: { status_dir: '/s', notify } }, async ($, on) => {
+  let music = file({ state: 'running' })
+  const toasts: string[] = []
+  mock.env(on, { HOME: '/home/me' })
+  const clock = mock.clock(on, { now: Date.parse(base.updated) })
+  on('fs.list', () => ({ value: [{ name: 'music.json', kind: 'file', size: 1, mtimeMs: 0, isLink: false }] }))
+  on('fs.read', () => ({ value: music }))
+  on('ui.toast', (_, e) => { toasts.push((e as { text: string }).text); return { value: undefined } })
+  on('command.register', () => ({ value: { command: 'pipelines' } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  await clock.settle()
+  expect(toasts).toEqual([])
+  music = file({ state: 'waiting', waiting: [{ id: 'l7', text: 'hear song 7' }] })
+  await clock.advance(60_000)
+  expect(toasts).toEqual(notify === 'on' ? ['music · waiting: hear song 7'] : [])
+  await clock.advance(60_000)
+  expect(toasts).toHaveLength(notify === 'on' ? 1 : 0)
 })
