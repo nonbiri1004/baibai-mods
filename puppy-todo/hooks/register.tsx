@@ -614,24 +614,39 @@ export const register: Register = on => {
         {count !== undefined ? <Text dimColor> {count}</Text> : null}
       </Text>
     )
-    // an open to-do: a tick, its words, where it came from, a ✕. a PR item has no tick: github ticks it
-    const row = (i: Item, isFromShown = true) => {
+    // the ✕ shows when the pointer is on the row (the desktop); with no pointer it always shows
+    const hasPointer = e.surface === 'desktop'
+    // an open to-do: a tick, its words, and a ✕ at the far right. a PR item has no tick or ✕: github ticks it
+    const row = (i: Item) => {
       const isPr = sourceOf(i) !== null
       const o = outcomeOf(i, v.prStates)
+      const scope = `row-${i.id}`
 
       return (
-        <Box key={`i-${i.id}`} flexDirection="row" gap={1}>
-          {isPr ? <Text dimColor>↗</Text> : <Button key={`tick-${i.id}`} label="☐" onPress={() => press($, i.id, 'done')} />}
-          <Text>
-            {clip(i.text, width - 12)}
-            {isPr ? <Text dimColor> · {o.state === 'unknown' ? 'not checked yet' : 'waiting for merge'}</Text> : null}
-            {isFromShown && i.session?.title ? <Text dimColor> · {clip(i.session.title, 24)}</Text> : null}
-          </Text>
+        <Box key={`i-${i.id}`} flexDirection="row" gap={1} alignItems="center" hover={{ scope }}>
+          {isPr ? <Text dimColor> ↗ </Text> : <Button key={`tick-${i.id}`} label="☐" plain onPress={() => press($, i.id, 'done')} />}
+          <Box flexGrow={1} flexShrink={1}>
+            <Text>
+              {clip(i.text, width - 10)}
+              {isPr ? <Text dimColor> · {o.state === 'unknown' ? 'not checked yet' : 'waiting for merge'}</Text> : null}
+            </Text>
+          </Box>
           {i.link?.startsWith('https://') ? <Link href={i.link} label="link" /> : null}
-          {isPr ? null : <Button key={`del-${i.id}`} label="✕" dimColor onPress={() => press($, i.id, 'delete')} />}
+          {isPr ? null : (
+            <Box {...(hasPointer ? { display: 'none', hover: { scope, display: 'flex' } } : {})}>
+              <Button key={`del-${i.id}`} label="✕" plain dimColor onPress={() => press($, i.id, 'delete')} />
+            </Box>
+          )}
         </Box>
       )
     }
+    const group = (key: string, label: string, list: readonly Item[]) => (
+      <Box key={key} flexDirection="column" marginTop={1}>
+        <Text dimColor>{label}</Text>
+        {list.map(i => row(i))}
+      </Box>
+    )
+    const ASKS_SHOWN = 3
 
     return (
       <Box flexDirection="column" gap={1}>
@@ -645,21 +660,22 @@ export const register: Register = on => {
             {clip(v.here.title || 'this conversation', width - v.here.project.length - 4)}
             <Text dimColor> · {v.here.project}</Text>
           </Text>
-          {v.here.recap ? <Text dimColor>last: {clip(v.here.recap, width * 2)}</Text> : null}
+          {v.here.recap ? <Text dimColor>last: {clip(v.here.recap, width - 6)}</Text> : null}
         </Box>
 
         {asks.length > 0 && (
           <Box flexDirection="column">
             {head('asked you', asks.length)}
-            {asks.map(t => (
+            {asks.slice(0, ASKS_SHOWN).map(t => (
               <Box key={`ask-${t.id}`} flexDirection="column">
                 <Text>
                   {clip(t.title, width - 16)}
                   <Text dimColor> · {ago(now, t.mtimeMs)}</Text>
                 </Text>
-                <Text dimColor>  {clip(t.ask ?? '', width * 2)}</Text>
+                <Text dimColor>  {clip(t.ask ?? '', width - 2)}</Text>
               </Box>
             ))}
+            {asks.length > ASKS_SHOWN ? <Text dimColor>and {asks.length - ASKS_SHOWN} more</Text> : null}
           </Box>
         )}
 
@@ -677,13 +693,8 @@ export const register: Register = on => {
               }}
             />
           ) : null}
-          {mine.map(i => row(i, false))}
-          {byProject(others).map(([project, group]) => (
-            <Box key={`p-${project}`} flexDirection="column">
-              <Text dimColor>{project}</Text>
-              {group.map(i => row(i))}
-            </Box>
-          ))}
+          {mine.length > 0 ? group('here', 'this conversation', mine) : null}
+          {byProject(others).map(([project, list]) => group(`p-${project}`, project, list))}
           {open.length === 0 ? <Text dimColor>nothing to do. the puppy naps.</Text> : null}
         </Box>
 

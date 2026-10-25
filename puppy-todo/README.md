@@ -12,11 +12,15 @@ asked you 1
   games chat · 3h
     make the office prototype first?
 
-to-do 3                [add a to-do…]
-  ☐ test offline sync                      ✕
-  my-app
-  ☐ write the retry docs · notes app       ✕
-  ↗ merge the notes PR · waiting for merge
+to-do 3
+[add a to-do…]
+
+this conversation
+☐ test offline sync
+
+my-app
+☐ write the retry docs
+↗ merge the notes PR · waiting for merge
 ▸ done 8
 ▸ tidy up: 32 of 80 conversations have nothing open
 ```
@@ -27,7 +31,7 @@ it opens by itself when a session starts. `/todo` opens it again; `/todo <text>`
 
 - **add**: the field at the top of the list, or `/todo <text>`.
 - **tick** ☐ when it's done. tick ☑ under `done` to open it again.
-- **✕** to delete something you won't do.
+- **✕** to delete something you won't do. on the desktop it shows when the pointer is on the row.
 - **tidy up**: when the sidebar gets long, unfold the last row. it lists every open conversation with what is still open in it and its last recap, so you can archive from the sidebar without opening each one.
 
 that's all. everything else happens by itself.
