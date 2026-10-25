@@ -5,10 +5,10 @@ import type { Problem, Snapshot, Status } from '../types'
 import { detailLines, picture, W } from './draw'
 import { ago, alerts, expandHome, isStale, parseStatus, sortCards, textBar, titleOf } from './format'
 
-const PANE = 'pipeline-cards'
+const PANE = 'puppy-pipelines'
 const REFRESH_MS = 60_000
 
-const snapshot = atom({ plugin: 'pipeline-cards', key: 'snapshot' } as const, null)
+const snapshot = atom({ plugin: 'puppy-pipelines', key: 'snapshot' } as const, null)
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
@@ -141,7 +141,7 @@ export const register: Register = (on, options) => {
         {snap.dirError && (
           <Box flexDirection="column">
             <Text color="error">can't read the status folder: {snap.dirError}</Text>
-            <Text dimColor>set it in /config → pipeline-cards → status folder{snap.dir ? ` (now ${snap.dir})` : ''}</Text>
+            <Text dimColor>set it in /config → puppy-pipelines → status folder{snap.dir ? ` (now ${snap.dir})` : ''}</Text>
           </Box>
         )}
         {!snap.dirError && snap.cards.length === 0 && snap.problems.length === 0 && (
