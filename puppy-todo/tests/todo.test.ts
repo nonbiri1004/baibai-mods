@@ -206,3 +206,10 @@ test('a question from another conversation fades after two days, newest first', 
   const asks = recentAsks([t('old', NOW - 3 * 86_400_000, 'still?'), t('a', NOW - 60_000, 'merge?'), t('b', NOW - 1000, 'which?'), t('none', NOW)], NOW)
   expect(asks.map(x => x.id)).toEqual(['b', 'a'])
 })
+
+test('Codex #4: a transcript that could not be read is no transcript, not an empty one', () => {
+  const [gone, fine] = parseScan(['\x1e/p/gone.jsonl', 'X', 'C:', '\x1e/p/fine.jsonl', '{"type":"custom-title","customTitle":"t"}', 'C:'].join('\n'), new Map())
+  expect(gone?.isUnread).toBe(true)
+  expect(fine?.isUnread).toBe(undefined)
+  expect(fine?.title).toBe('t')
+})

@@ -75,6 +75,8 @@ export type Talk = {
   askId?: string
   prs: string[]
   mtimeMs: number
+  // the file could not be read: nothing in it is known
+  isUnread?: boolean
 }
 
 // one of the app's conversations, from its session list

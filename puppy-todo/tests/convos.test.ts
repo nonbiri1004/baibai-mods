@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Item, Session, Talk } from '../types'
-import { folderFiles, isWorktree, parseSessions, parseWorktree, pickByTitle, pickTranscript, projectDir, sortConvos, verdictOf } from '../hooks/convos'
+import { folderFiles, isWorktree, matchByTime, parseSessions, parseWorktree, pickByTitle, pickTranscript, projectDir, sortConvos, verdictOf } from '../hooks/convos'
 
 const P = '/h/.claude/projects'
 const session = (over: Partial<Session> = {}): Session => ({
@@ -105,4 +105,32 @@ test('when the time says nothing, the newest unclaimed transcript that had the t
   expect(folderFiles(s, [{ path: `${dir}a.jsonl` }, { path: `${P}/-elsewhere/a.jsonl` }, { path: `${dir}sub/a.jsonl` }], P)).toEqual([
     { path: `${dir}a.jsonl` },
   ])
+})
+
+test('Codex #1: an old transcript named after the app id does not win over the title match', () => {
+  const dir = `${P}/-Users-a-dev-Projects-tools/`
+  const files = [
+    { path: `${dir}aaaa.jsonl`, mtimeMs: 1_000 },
+    { path: `${dir}resumed.jsonl`, mtimeMs: 900_000 },
+  ]
+  // the last activity matches no file to the second: leave it to the title match
+  expect(pickTranscript(session({ id: 'local_aaaa', lastActivityMs: 2_000_000 }), files, P)).toBe(null)
+})
+
+test('Codex #2: two conversations never share one transcript by time', () => {
+  const dir = `${P}/-Users-a-dev-Projects-tools/`
+  const files = [{ path: `${dir}one.jsonl`, mtimeMs: 1_000_000 }]
+  const got = matchByTime(
+    [session({ id: 'local_a', title: 'a', lastActivityMs: 1_000_000 }), session({ id: 'local_b', title: 'b', lastActivityMs: 1_000_100 })],
+    files,
+    P,
+  )
+  expect([...got.values()].filter(p => p === `${dir}one.jsonl`)).toHaveLength(1)
+  expect(got.get('local_a')).toBe(`${dir}one.jsonl`)
+})
+
+test('Codex #3: a to-do written under the old title still counts after a rename', () => {
+  const old: Item = { id: 'i', text: 'x', project: 'p', kind: 'todo', status: 'open', createdAt: '', session: { id: 'old-id', title: 'first name', cwd: '/Users/a/dev/Projects/tools' } }
+  const renamed = talk({ id: 'new-id', title: 'notes', titles: ['first name', 'notes'] })
+  expect(verdictOf({ ...base, items: [old], session: session(), talk: renamed }).reasons).toEqual(['1 open to-do'])
 })

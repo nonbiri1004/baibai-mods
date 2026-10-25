@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Convo, Item, PrSource, PrState, Session, Talk, View, WorktreeState } from '../types'
-import { folderFiles, isWorktree, parseSessions, parseWorktree, pickByTitle, pickTranscript, sortConvos, verdictOf } from './convos'
+import { folderFiles, isWorktree, matchByTime, parseSessions, parseWorktree, pickByTitle, sortConvos, verdictOf } from './convos'
 import {
   FACES,
   ago,
@@ -207,7 +207,7 @@ async function readConvos(
 ): Promise<Convo[]> {
   const projects = `${await home($)}/.claude/projects`
   const live = c.sessions.filter(s => !s.isArchived)
-  const paths = new Map(live.map(s => [s.id, pickTranscript(s, c.files, projects)]))
+  const paths = matchByTime(live, c.files, projects)
   // no file at the moment of the last activity: match the rest by title, leaving out files another
   // conversation already matched
   const unmatched = live.filter(s => paths.get(s.id) === null)

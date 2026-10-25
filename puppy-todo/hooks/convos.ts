@@ -82,6 +82,11 @@ export function folderFiles<T extends { path: string }>(s: Session, files: reado
   return files.filter(f => f.path.startsWith(dir) && !f.path.slice(dir.length).includes('/'))
 }
 
+// every conversation's transcript by time
+export function matchByTime(sessions: readonly Session[], files: readonly { path: string; mtimeMs: number }[], projects: string): Map<string, string | null> {
+  return new Map(sessions.map(s => [s.id, pickTranscript(s, files, projects)]))
+}
+
 // `git status --porcelain` lines, and the number of commits on no remote
 export function parseWorktree(status: { exitCode: number; stdout: string }, unpushed: { exitCode: number; stdout: string }): WorktreeState {
   if (status.exitCode !== 0 || unpushed.exitCode !== 0) {
