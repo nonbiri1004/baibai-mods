@@ -77,8 +77,8 @@ function musicPicture(s: Status, isStale: boolean): Picture | null {
   const isWorking = s.state === 'running' && !isStale
   let body = puppy(0, H - 26 * 2.6 - 18, 2.6, isWorking)
   if (isWorking) body += notes(70, 40)
+  // the host is already in the card's header; the picture keeps to the studio itself
   const comfy = d.comfy ? (d.comfy.up ? 'comfy up' : 'comfy down') : ''
-  body += `<text class="m px" x="0" y="${H - 4}" font-size="9">${esc([comfy, s.host ?? ''].filter(Boolean).join(' · ').toUpperCase())}</text>`
 
   // 30 squares per row; they shrink so a batch of 220 songs still fits. Past MAX_SQUARES only the
   // newest are drawn, so the squares keep a size and the SVG stays under the element's size limit.
@@ -101,7 +101,9 @@ function musicPicture(s: Status, isStale: boolean): Picture | null {
     body += `<rect x="${x0 + i * 78}" y="${H - 12}" width="8" height="8" rx="1" fill="${fill}"/>` +
       `<text class="m" x="${x0 + 12 + i * 78}" y="${H - 5}" font-size="10">${name}</text>`
   })
-  if (b.avg_gen_sec) body += `<text class="m px" x="${W}" y="${H - 5}" font-size="10" text-anchor="end">${Math.round(b.avg_gen_sec / 60)} min / song</text>`
+  const pace = b.avg_gen_sec ? `${Math.round(b.avg_gen_sec / 60)} min / song` : ''
+  const right = [comfy, pace].filter(Boolean).join(' · ')
+  if (right) body += `<text class="m px" x="${W}" y="${H - 5}" font-size="10" text-anchor="end">${esc(right)}</text>`
   return {
     height: H,
     alt: `${b.name}: ${b.ok ?? 0} ok, ${b.needs_listen ?? 0} to hear, ${b.rejected ?? 0} rejected`,
