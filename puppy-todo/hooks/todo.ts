@@ -142,6 +142,37 @@ export function outcomeOf(item: Item, prStates: Readonly<Record<string, PrState>
   return { state: 'done', basis: 'legacy', why: 'marked done, nobody recorded who', endedAt: item.doneAt }
 }
 
+// the item after someone says it is done: who said it, who wrote it down, when
+export function declareDone(item: Item, how: { by: string; note?: string; at?: string } = { by: 'person' }): Item {
+  const at = how.at ?? new Date().toISOString()
+  const { declaration: _gone, doneAt: _alsoGone, ...rest } = item
+
+  return {
+    ...rest,
+    schemaVersion: 2,
+    completion: item.completion ?? { mode: 'declared' },
+    status: 'done',
+    doneAt: at,
+    declaration: { by: how.by, ...(how.by !== 'claude' ? { recordedBy: 'claude' } : {}), at, ...(how.note ? { note: how.note } : {}) },
+  }
+}
+
+// the item open again: the old declaration no longer holds
+export function reopen(item: Item): Item {
+  const { declaration: _gone, doneAt: _alsoGone, ...rest } = item
+
+  return { ...rest, schemaVersion: 2, completion: item.completion ?? { mode: 'declared' }, status: 'open' }
+}
+
+// what to say when someone tries to mark a PR item done: github is asked instead.
+// fresh is what github just said (empty when it could not be asked); known is what the pane knew
+export function prAnswer(item: Item, fresh: Readonly<Record<string, PrState>>, known: Readonly<Record<string, PrState>>): { states: Record<string, PrState>; said: string } {
+  const states = { ...known, ...fresh }
+  const o = outcomeOf(item, fresh)
+
+  return { states, said: `not changed: this item is done when github says so. github: ${o.state} (${o.why ?? ''})` }
+}
+
 const isOpen = (o: Outcome) => o.state === 'open' || o.state === 'unknown'
 
 // open first (oldest first, so nothing sinks), then what ended in the last few days

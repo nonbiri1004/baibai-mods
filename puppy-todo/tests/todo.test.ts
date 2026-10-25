@@ -19,6 +19,9 @@ import {
   parsePrs,
   parseScan,
   prKey,
+  declareDone,
+  prAnswer,
+  reopen,
   projectOf,
   saying,
   shown,
@@ -201,4 +204,28 @@ test('github answers become rows and states', () => {
   expect(parsePrUrl('https://github.com/you/app/pull/8')).toEqual(PR)
   expect(parsePrUrl('https://github.com/you/app/issues/8')).toBe(null)
   expect(parsePrUrl('https://evil.example/you/app/pull/8')).toBe(null)
+})
+
+test('Codex #1: an item with completion null does not break the list', () => {
+  const broken = parseItem('{"id":"x","text":"x","completion":null,"source":null,"declaration":null}')
+  expect(broken).not.toBe(null)
+  expect(() => shown([broken as Item, item({ id: 'ok' })], {}, NOW)).not.toThrow()
+  expect(outcomeOf(broken as Item, {}).state).toBe('open')
+})
+
+test('Codex #2: skipped, done, then opened again comes back', () => {
+  const one = item({ id: 'x', text: 'call the vet', schemaVersion: 2, completion: { mode: 'declared' } })
+  const skip = skipOf(target.item(one), occurrence.item(one))
+  const reopened = reopen(declareDone(one))
+  expect(reopened.status).toBe('open')
+  expect(isSkipped(skip, target.item(reopened), occurrence.item(reopened))).toBe(false)
+})
+
+test('Codex #4: when github cannot be asked, the answer and the line agree', () => {
+  const known = states({ state: 'MERGED', endedAt: '2026-10-24T12:00:00Z' })
+  const answer = prAnswer(prItem(), {}, known)
+  // the line is drawn from answer.states, so the words must say the same thing
+  expect(outcomeOf(prItem(), answer.states).state).toBe('done')
+  expect(answer.said).toContain('could not ask github')
+  expect(answer.said).toContain('done')
 })

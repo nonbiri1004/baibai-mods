@@ -10,6 +10,7 @@ import {
   byProject,
   clip,
   clockTime,
+  declareDone,
   isHere,
   isOpenItem,
   isSkipped,
@@ -24,9 +25,11 @@ import {
   parsePrUrl,
   parsePrs,
   parseScan,
+  prAnswer,
   prKey,
   prUrl,
   projectOf,
+  reopen,
   saying,
   shown,
   sourceOf,
@@ -349,29 +352,14 @@ async function declare(
     return null
   }
   if (sourceOf(item) || item.completion?.mode === 'source') {
-    const states = await readPrStates($, [item])
-    await update($, view, was => ({ ...was, prStates: { ...was.prStates, ...states } }))
-    const o = outcomeOf(item, states)
+    const fresh = await readPrStates($, [item])
+    const answer = prAnswer(item, fresh, (await read($, view)).prStates)
+    await update($, view, was => ({ ...was, prStates: { ...was.prStates, ...answer.states } }))
 
-    return { item, said: `not changed: this item is done when github says so. github: ${o.state} (${o.why ?? ''})` }
+    return { item, said: answer.said }
   }
   const at = new Date(await $.clock.now()).toISOString()
-  const { declaration: _gone, doneAt: _alsoGone, ...rest } = item
-  const next: Item = how.isDone
-    ? {
-        ...rest,
-        schemaVersion: 2,
-        completion: item.completion ?? { mode: 'declared' },
-        status: 'done',
-        doneAt: at,
-        declaration: {
-          by: how.by,
-          ...(how.by !== 'claude' ? { recordedBy: 'claude' } : {}),
-          at,
-          ...(how.note ? { note: how.note } : {}),
-        },
-      }
-    : { ...rest, schemaVersion: 2, completion: item.completion ?? { mode: 'declared' }, status: 'open' }
+  const next = how.isDone ? declareDone(item, { by: how.by, note: how.note, at }) : reopen(item)
   await writeItem($, next)
   await update($, view, was => ({ ...was, items: was.items.map(i => (i.id === id ? next : i)) }))
 

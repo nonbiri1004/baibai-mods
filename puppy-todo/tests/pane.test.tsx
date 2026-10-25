@@ -72,3 +72,28 @@ test('the pane has skip, never a done button, on every surface', async ($, on) =
     await ui.unmount()
   }
 })
+
+test('Codex #3: a skipped PR item that merged shows as done, and is not counted as skipped', async ($, on) => {
+  const merged: View = {
+    ...VIEW,
+    talks: [],
+    items: [prItem],
+    prStates: { 'github.com/you/app#8': { state: 'MERGED', endedAt: '2026-10-25T09:00:00Z' } },
+    attention: {
+      [target.item(prItem)]: {
+        version: 1,
+        target: target.item(prItem),
+        state: 'dismissed',
+        occurrence: occurrence.item(prItem),
+        at: '',
+        by: 'person',
+      },
+    },
+  }
+  on('state.get', () => ({ value: { value: merged, version: 1 } }))
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect((await ui.find({ type: 'Text', text: /all clear/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /merge the notes PR · merged/ }))?.text).toBeTruthy()
+  expect(await ui.find({ type: 'Button', key: 'show-skipped' })).toBeFalsy()
+  await ui.unmount()
+})
