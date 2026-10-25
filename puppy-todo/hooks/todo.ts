@@ -175,10 +175,19 @@ export function reopen(item: Item, at: string = new Date().toISOString()): Item 
 // what to say when someone tries to mark a PR item done: github is asked instead.
 // fresh is what github just said (empty when it could not be asked); known is what the pane knew
 export function prAnswer(item: Item, fresh: Readonly<Record<string, PrState>>, known: Readonly<Record<string, PrState>>): { states: Record<string, PrState>; said: string } {
+  // one set of states for the words and for the line beside them
   const states = { ...known, ...fresh }
-  const o = outcomeOf(item, fresh)
+  const o = outcomeOf(item, states)
+  const source = sourceOf(item)
+  const isFresh = source !== null && prKey(source) in fresh
+  const what = `${o.state}${o.why ? ` (${o.why})` : ''}`
 
-  return { states, said: `not changed: this item is done when github says so. github: ${o.state} (${o.why ?? ''})` }
+  return {
+    states,
+    said: isFresh
+      ? `not changed: this item is done when github says so. github: ${what}`
+      : `not changed: this item is done when github says so. could not ask github now; last known: ${what}`,
+  }
 }
 
 const isOpen = (o: Outcome) => o.state === 'open' || o.state === 'unknown'
