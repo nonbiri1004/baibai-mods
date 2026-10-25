@@ -45,6 +45,8 @@ const VIEW: View = {
     },
   },
   isShowingSkipped: false,
+  convos: null,
+  archiving: {},
   at: Date.parse('2026-10-25T10:00:00Z'),
   notes: [],
 }
@@ -96,4 +98,26 @@ test('Codex #3: a skipped PR item that merged shows as done, and is not counted 
   expect((await ui.find({ type: 'Text', text: /merge the notes PR · merged/ }))?.text).toBeTruthy()
   expect(await ui.find({ type: 'Button', key: 'show-skipped' })).toBeFalsy()
   await ui.unmount()
+})
+
+test('conversations: archive only on a ready row, reasons on the others', async ($, on) => {
+  const session = (id: string, title: string) => ({ id, title, cwd: '/x', isArchived: false, isPinned: true, lastActivityMs: 0 })
+  const withConvos: View = {
+    ...VIEW,
+    convos: [
+      { session: session('local_a', 'shelf listing'), recap: 'listed it', verdict: { state: 'ready', reasons: [] } },
+      { session: session('local_b', 'games chat'), verdict: { state: 'open', reasons: ['asked you: prototype?', '2 open to-dos'] } },
+      { session: session('local_c', 'weekly news'), verdict: { state: 'unknown', reasons: ['could not find its last turn'] } },
+    ],
+  }
+  on('state.get', () => ({ value: { value: withConvos, version: 1 } }))
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect(await ui.find({ type: 'Button', key: 'archive-local_a' })).toBeTruthy()
+    expect(await ui.find({ type: 'Button', key: 'archive-local_b' })).toBeFalsy()
+    expect(await ui.find({ type: 'Button', key: 'archive-local_c' })).toBeFalsy()
+    expect((await ui.find({ type: 'Text', text: /asked you: prototype\? · 2 open to-dos/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /1 can be archived/ }))?.text).toBeTruthy()
+    await ui.unmount()
+  }
 })

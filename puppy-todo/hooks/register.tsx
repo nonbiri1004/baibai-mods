@@ -1,7 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Attention, Item, Kind, Pr, PrSource, PrState, Talk, View } from '../types'
+import type { Attention, Convo, Item, Kind, Pr, PrSource, PrState, Session, Talk, View, WorktreeState } from '../types'
+import { isWorktree, parseSessions, parseWorktree, pickTranscript, sortConvos, verdictOf } from './convos'
 import {
   FACES,
   KINDS,
@@ -52,6 +53,8 @@ const EMPTY: View = {
   prStates: {},
   attention: {},
   isShowingSkipped: false,
+  convos: null,
+  archiving: {},
   at: null,
   notes: [],
 }
@@ -73,7 +76,7 @@ tail -c 1500000 "$f" | LC_ALL=C grep -a -F -e '"type":"custom-title"' -e '"type"
 c=$(tail -c 30000 "$f" | LC_ALL=C grep -a -o '"cwd":"[^"]*"' | tail -1)
 printf 'C:%s\\n' "$c"
 done`
-const LIST = `find "$1" -maxdepth 2 -name '*.jsonl' -mtime -${TALK_DAYS} -not -path '*scratch-workspaces*' -print0 | xargs -0 stat -f '%m %N'`
+const LIST = `find "$1" -maxdepth 2 -name '*.jsonl' -mtime -${TALK_DAYS} -not -path '*scratch-workspaces*' -print0 | xargs -0 stat -f '%Fm %N'`
 
 async function home($: EngineInterface): Promise<string> {
   return (await $.env.get('HOME')) ?? ''
@@ -140,9 +143,13 @@ async function projectHere($: EngineInterface): Promise<string> {
   return fromRemote || projectOf(repo?.root ?? (await $.session.cwd()))
 }
 
-async function readTalks($: EngineInterface, ownId: string): Promise<Talk[]> {
+type TranscriptFile = { path: string; mtimeMs: number }
+
+// every transcript changed in the last TALK_DAYS days, newest first
+async function listTranscripts($: EngineInterface): Promise<TranscriptFile[]> {
   const listed = await $.process.run(['sh', '-c', LIST, 'sh', `${await home($)}/.claude/projects`])
-  const files = listed.stdout
+
+  return listed.stdout
     .split('\n')
     .map(line => {
       const cut = line.indexOf(' ')
@@ -151,8 +158,11 @@ async function readTalks($: EngineInterface, ownId: string): Promise<Talk[]> {
     })
     .filter(f => f.path.endsWith('.jsonl') && Number.isFinite(f.mtimeMs))
     .sort((a, b) => b.mtimeMs - a.mtimeMs)
-  const picked = files.filter((f, i) => i < TALK_MAX || f.path.endsWith(`/${ownId}.jsonl`))
-  const stale = picked.filter(f => talkCache.get(f.path)?.mtimeMs !== f.mtimeMs)
+}
+
+// what each transcript says, read again only when the file changed
+async function scanTalks($: EngineInterface, files: readonly TranscriptFile[]): Promise<Map<string, Talk>> {
+  const stale = files.filter(f => talkCache.get(f.path)?.mtimeMs !== f.mtimeMs)
   if (stale.length > 0) {
     const mtimes = new Map(stale.map(f => [f.path, f.mtimeMs]))
     const scanned = await $.process.run(['sh', '-c', SCAN, 'sh', ...stale.map(f => f.path)], { timeoutMs: 120_000 })
@@ -164,27 +174,94 @@ async function readTalks($: EngineInterface, ownId: string): Promise<Talk[]> {
       }
     })
   }
+  const out = new Map<string, Talk>()
+  for (const f of files) {
+    const talk = talkCache.get(f.path)?.talk
+    if (talk) {
+      out.set(f.path, talk)
+    }
+  }
 
-  return picked.map(f => talkCache.get(f.path)?.talk).filter((t): t is Talk => t !== undefined)
+  return out
 }
 
-// the desktop app's own list says which conversations are archived; away from it, nothing is.
-// transcripts don't carry the app's session id, so the title is all there is to match on
-async function archivedTitles($: EngineInterface): Promise<Set<string> | null> {
+// the app's session list, archived ones included; null away from the desktop app
+async function readSessions($: EngineInterface): Promise<Session[] | null> {
   try {
     const got = await $.mcp.call('ccd_session_mgmt', 'list_sessions', { include_archived: true, limit: 200 })
     const block = got.content[0] as { type?: string; text?: string } | undefined
     if (got.isError || block?.type !== 'text' || !block.text) {
       return null
     }
-    const rows = JSON.parse(block.text) as { title?: string; isArchived?: boolean }[]
-    const live = new Set(rows.filter(r => !r.isArchived && r.title).map(r => r.title as string))
 
-    // a title that is both archived and live stays shown: hiding a live conversation is worse
-    return new Set(rows.filter(r => r.isArchived && r.title && !live.has(r.title)).map(r => r.title as string))
+    return parseSessions(block.text)
   } catch {
     return null
   }
+}
+
+// a title archived everywhere: transcripts don't carry the app's id, so "waiting on you" matches by title.
+// a title that is both archived and live stays shown: hiding a live conversation is worse
+function archivedTitles(sessions: readonly Session[] | null): Set<string> | null {
+  if (!sessions) {
+    return null
+  }
+  const live = new Set(sessions.filter(s => !s.isArchived).map(s => s.title))
+
+  return new Set(sessions.filter(s => s.isArchived && !live.has(s.title)).map(s => s.title))
+}
+
+// a worktree's uncommitted changes and commits on no remote; null when it isn't a worktree or is gone
+async function readWorktree($: EngineInterface, cwd: string): Promise<WorktreeState | null> {
+  if (!isWorktree(cwd) || !(await $.fs.exists(cwd))) {
+    return null
+  }
+  try {
+    const [status, unpushed] = await Promise.all([
+      $.process.run(['git', '-C', cwd, 'status', '--porcelain']),
+      $.process.run(['git', '-C', cwd, 'rev-list', '--count', 'HEAD', '--not', '--remotes']),
+    ])
+
+    return parseWorktree(status, unpushed)
+  } catch {
+    return { state: 'unknown' }
+  }
+}
+
+// one row per conversation the app has open, each with whether it can be archived
+async function readConvos(
+  $: EngineInterface,
+  c: { sessions: readonly Session[]; files: readonly TranscriptFile[]; items: readonly Item[]; prStates: Record<string, PrState>; here: View['here'] },
+): Promise<Convo[]> {
+  const projects = `${await home($)}/.claude/projects`
+  const live = c.sessions.filter(s => !s.isArchived)
+  const paths = new Map(live.map(s => [s.id, pickTranscript(s, c.files, projects)]))
+  const talks = await scanTalks(
+    $,
+    c.files.filter(f => [...paths.values()].includes(f.path)),
+  )
+
+  return Promise.all(
+    live.map(async session => {
+      const path = paths.get(session.id)
+      const talk = path ? (talks.get(path) ?? null) : null
+      const worktree = await readWorktree($, session.cwd)
+      const isThis = session.title === c.here.title && session.cwd === c.here.cwd && talk?.id === c.here.id
+
+      return {
+        session,
+        ...(talk?.recap ? { recap: talk.recap } : {}),
+        verdict: verdictOf({
+          session,
+          talk,
+          items: c.items,
+          isOpenItem: i => isOpenItem(i, c.prStates),
+          worktree,
+          isHere: isThis || (path !== null && path !== undefined && path.endsWith(`/${c.here.id}.jsonl`)),
+        }),
+      }
+    }),
+  )
 }
 
 // runs gh from where it is: the app may not have homebrew on its PATH
@@ -248,22 +325,25 @@ async function refresh($: EngineInterface, isFull = false): Promise<void> {
   const now = await $.clock.now()
   const ownId = await $.session.id()
   const notes: string[] = []
-  const [items, attention, talks, archived, project, cwd] = await Promise.all([
+  const [items, attention, files, sessions, project, cwd] = await Promise.all([
     readItems($).catch(() => {
       notes.push('could not read ~/.claude/todo/items')
 
       return [] as Item[]
     }),
     readAttention($).catch(() => ({}) as Record<string, Attention>),
-    readTalks($, ownId).catch(() => {
+    listTranscripts($).catch(() => {
       notes.push('could not read the transcripts')
 
-      return [] as Talk[]
+      return [] as TranscriptFile[]
     }),
-    archivedTitles($),
+    readSessions($),
     projectHere($),
     $.session.cwd(),
   ])
+  const archived = archivedTitles(sessions)
+  const recent = files.filter((f, i) => i < TALK_MAX || f.path.endsWith(`/${ownId}.jsonl`))
+  const talks = [...(await scanTalks($, recent).catch(() => new Map<string, Talk>())).values()]
   const was = await read($, view)
   let { prs, prStates } = was
   if (isFull || now - ghAt > GH_EVERY) {
@@ -284,10 +364,19 @@ async function refresh($: EngineInterface, isFull = false): Promise<void> {
   const others = newestTalks(talks).filter(
     t => t.id !== ownId && t.title !== '' && !(own && t.title === own.title && t.cwd === own.cwd) && !archived?.has(t.title),
   )
+  const here = { id: ownId, title: own?.title || clip(goal ?? '', 40), project, cwd, goal, recap: own?.recap }
+  const convos = sessions
+    ? await readConvos($, { sessions, files, items, prStates, here }).catch(() => {
+        notes.push('could not read the conversations')
+
+        return null
+      })
+    : null
   await update($, view, v => ({
     ...v,
-    here: { id: ownId, title: own?.title || clip(goal ?? '', 40), project, cwd, goal, recap: own?.recap },
+    here,
     talks: others,
+    convos,
     prs,
     items,
     prStates,
@@ -364,6 +453,46 @@ async function declare(
   await update($, view, was => ({ ...was, items: was.items.map(i => (i.id === id ? next : i)) }))
 
   return { item: next, said: next.status === 'done' ? `done (${how.by} said so)` : 'open again' }
+}
+
+const textOf = (got: { content: unknown[] }) =>
+  got.content.map(b => ((b as { type?: string; text?: string }).type === 'text' ? (b as { text: string }).text : '')).join(' ')
+
+// archives one conversation the person pressed archive on. it looks again first (the row may be a
+// minute old), unpins it (the app won't archive a pinned one), and pins it back if archiving fails
+async function archiveConvo($: EngineInterface, id: string): Promise<void> {
+  const say = (text: string) => update($, view, was => ({ ...was, archiving: { ...was.archiving, [id]: text } }))
+  await say('checking again…')
+  await refresh($)
+  const c = (await read($, view)).convos?.find(x => x.session.id === id)
+  if (!c || c.verdict.state !== 'ready') {
+    await say(c ? `not archived: ${c.verdict.reasons.join(', ') || 'no longer ready'}` : 'not archived: it is gone from the list')
+
+    return
+  }
+  try {
+    if (c.session.isPinned) {
+      const un = await $.mcp.call('ccd_sidebar', 'set_pinned', { session_id: id, pinned: false })
+      if (un.isError) {
+        await say(`not archived: could not unpin it (${clip(textOf(un), 80)})`)
+
+        return
+      }
+    }
+    const got = await $.mcp.call('ccd_session_mgmt', 'archive_session', { session_id: id, reason: 'puppy-todo: nothing left in it' })
+    if (got.isError) {
+      if (c.session.isPinned) {
+        await $.mcp.call('ccd_sidebar', 'set_pinned', { session_id: id, pinned: true }).catch(() => undefined)
+      }
+      await say(`not archived: ${clip(textOf(got), 80)}`)
+
+      return
+    }
+    await say('archived')
+  } catch (err) {
+    await say(`not archived: ${clip(String(err), 80)}`)
+  }
+  await refresh($)
 }
 
 function line(i: Item, prStates: Readonly<Record<string, PrState>>): string {
@@ -639,6 +768,42 @@ export const register: Register = on => {
           {others.length === 0 ? <Text dimColor>nothing here.</Text> : null}
           <Text dimColor>done is said in a conversation (“the call is done”), or by github for PR items.</Text>
         </Box>
+
+        {v.convos === null ? (
+          <Text dimColor>conversations: the app's session list can't be read here.</Text>
+        ) : (
+          <Box flexDirection="column">
+            {head('conversations', v.convos.length)}
+            <Text dimColor>
+              {v.convos.filter(c => c.verdict.state === 'ready').length} can be archived · nothing left in them, folder clean
+            </Text>
+            {sortConvos(v.convos).map(c => {
+              const mark = { ready: '✓', open: '●', unknown: '?' }[c.verdict.state]
+              const said = v.archiving[c.session.id]
+
+              return (
+                <Box key={`c-${c.session.id}`} flexDirection="column">
+                  <Box flexDirection="row" gap={1}>
+                    <Text dimColor={c.verdict.state === 'unknown'}>
+                      {mark} {clip(c.session.title, width - 30)}
+                      <Text dimColor>
+                        {' '}
+                        · {ago(now, c.session.lastActivityMs)}
+                        {c.session.isPinned ? ' · pinned' : ''}
+                      </Text>
+                    </Text>
+                    {c.verdict.state === 'ready' ? (
+                      <Button key={`archive-${c.session.id}`} label="archive" onPress={() => archiveConvo($, c.session.id)} />
+                    ) : null}
+                  </Box>
+                  {c.verdict.reasons.length > 0 ? <Text dimColor>  {clip(c.verdict.reasons.join(' · '), width * 2)}</Text> : null}
+                  {c.verdict.state === 'ready' && c.recap ? <Text dimColor>  last: {clip(c.recap, width * 2)}</Text> : null}
+                  {said ? <Text dimColor>  {said}</Text> : null}
+                </Box>
+              )
+            })}
+          </Box>
+        )}
 
         {skippedRows.length > 0 && (
           <Box flexDirection="column">

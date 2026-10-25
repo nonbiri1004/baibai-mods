@@ -87,6 +87,27 @@ export type Talk = {
 
 export type Pr = { repo: string; number: number; title: string; url: string; isDraft: boolean; updatedAt: string }
 
+// one of the app's conversations, from its session list
+export type Session = {
+  // local_<uuid>, the app's id
+  id: string
+  title: string
+  cwd: string
+  isArchived: boolean
+  isPinned: boolean
+  lastActivityMs: number
+  prNumber?: number
+  prState?: string
+}
+
+// a worktree's git state: changed files and commits on no remote
+export type WorktreeState = { state: 'read'; changed: number; unpushed: number } | { state: 'unknown' }
+
+// ready: nothing left, it can be archived. open: something is left (reasons say what). unknown: couldn't tell
+export type Verdict = { state: 'ready' | 'open' | 'unknown'; reasons: string[] }
+
+export type Convo = { session: Session; recap?: string; verdict: Verdict }
+
 export type View = {
   // this conversation
   here: { id: string; title: string; project: string; cwd: string; goal?: string; recap?: string }
@@ -99,6 +120,10 @@ export type View = {
   attention: Record<string, Attention>
   // whether the skipped rows are listed
   isShowingSkipped: boolean
+  // every conversation the app has open, with its verdict; null when the app's list can't be read
+  convos: Convo[] | null
+  // what happened on the last archive press, by session id
+  archiving: Record<string, string>
   // ms since the epoch of the last refresh; null before the first
   at: number | null
   // why a source could not be read (gh missing, ...)
