@@ -527,11 +527,14 @@ export const register: Register = on => {
     const asks = v.talks.filter(t => t.ask).map(t => ({ t, what: target.ask(t), occ: occurrence.ask(t) }))
     const prs = v.prs.map(p => ({ p, what: target.pr(p), occ: occurrence.pr(p) }))
     const skipped = (x: { what: string; occ: string }) => isSkipped(v.attention, x.what, x.occ)
-    const liveItems = items.filter(x => !skipped(x))
+    // a skip hides a reminder; an item that ended (merged, closed, said done) reminds of nothing,
+    // so it shows as ended and is not counted as skipped
+    const skippedItem = (x: { i: Item; what: string; occ: string }) => isOpenItem(x.i, v.prStates) && skipped(x)
+    const liveItems = items.filter(x => !skippedItem(x))
     const liveAsks = asks.filter(x => !skipped(x))
     const livePrs = prs.filter(x => !skipped(x))
     const skippedRows = [
-      ...items.filter(skipped).map(x => ({ what: x.what, occ: x.occ, label: x.i.text })),
+      ...items.filter(skippedItem).map(x => ({ what: x.what, occ: x.occ, label: x.i.text })),
       ...asks.filter(skipped).map(x => ({ what: x.what, occ: x.occ, label: `${x.t.title}: ${x.t.ask ?? ''}` })),
       ...prs.filter(skipped).map(x => ({ what: x.what, occ: x.occ, label: `${x.p.repo}#${x.p.number} ${x.p.title}` })),
     ]
