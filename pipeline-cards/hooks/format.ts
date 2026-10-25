@@ -1,5 +1,5 @@
 // Reading one status file (FORMAT.md). Pure functions, so the tests need no engine.
-import type { State, Status } from '../types'
+import type { Snapshot, State, Status } from '../types'
 
 const STATES: readonly State[] = ['running', 'idle', 'waiting', 'error']
 
@@ -78,4 +78,34 @@ export function textBar(p: NonNullable<Status['progress']>, width = 10): string 
 // "~/x" → "<home>/x"; the folder setting is typed by hand.
 export function expandHome(path: string, home: string | undefined): string {
   return home && (path === '~' || path.startsWith('~/')) ? home + path.slice(1) : path
+}
+
+// What a card needs from you right now: its state, or "quiet" when the writer went silent.
+const markOf = (s: Status, now: number) => (isStale(s, now) ? 'quiet' : s.state)
+const ALERT = new Set(['waiting', 'error', 'quiet'])
+
+// The lines to tell the person, comparing the last read with this one: a card that turned
+// waiting, error or quiet, or new waiting items on a card that was already waiting.
+// No previous read (the pane just started) is a baseline, not news.
+export function alerts(prev: Snapshot | null, next: Snapshot): string[] {
+  if (!prev) return []
+  const before = new Map(prev.cards.map(s => [s.pipeline, s]))
+  const out: string[] = []
+  for (const s of next.cards) {
+    const was = before.get(s.pipeline)
+    const mark = markOf(s, next.loadedAt)
+    const wasMark = was ? markOf(was, prev.loadedAt) : undefined
+    const items = s.waiting ?? []
+    if (ALERT.has(mark) && mark !== wasMark) {
+      const why = mark === 'quiet'
+        ? `no update for ${ago(next.loadedAt - Date.parse(s.updated)).replace(' ago', '')}; is ${s.host ?? 'the computer'} asleep?`
+        : mark === 'waiting' && items[0] ? items[0].text : s.headline
+      out.push(`${titleOf(s)} · ${mark}: ${why}`)
+    } else if (mark === 'waiting') {
+      const seen = new Set((was?.waiting ?? []).map(w => w.id))
+      const fresh = items.filter(w => !seen.has(w.id))
+      if (fresh.length) out.push(`${titleOf(s)} · new: ${fresh[0]!.text}${fresh.length > 1 ? ` (+${fresh.length - 1} more)` : ''}`)
+    }
+  }
+  return out
 }
