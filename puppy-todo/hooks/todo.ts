@@ -66,9 +66,16 @@ export function parseItem(text: string): Item | null {
     return null
   }
   const kind = KINDS.includes(o.kind as Kind) ? (o.kind as Kind) : 'todo'
+  // a null or a non-object in these is read as not written; an object with a strange mode
+  // stays, and shows as "not understood"
+  const isObject = (v: unknown) => typeof v === 'object' && v !== null && !Array.isArray(v)
+  const { completion, source, declaration, ...known } = o
 
   return {
-    ...(o as Partial<Item>),
+    ...(known as Partial<Item>),
+    ...(isObject(completion) ? { completion: completion as Item['completion'] } : {}),
+    ...(isObject(source) ? { source: source as Item['source'] } : {}),
+    ...(isObject(declaration) ? { declaration: declaration as Item['declaration'] } : {}),
     id: o.id,
     text: o.text.trim(),
     project: typeof o.project === 'string' && o.project ? o.project : 'misc',
