@@ -28,9 +28,8 @@ test('the transcript written at the last activity is the one, even among forks w
     { path: `${P}/-Users-a-dev-Projects-other/x.jsonl`, mtimeMs: 1_000_000 },
   ]
   expect(pickTranscript(session(), files, P)).toBe(`${dir}fork2.jsonl`)
-  // nothing near the time: the file named after the app's id, else none
+  // nothing near the time: none here; the title match decides
   expect(pickTranscript(session({ lastActivityMs: 5_000_000 }), files, P)).toBe(null)
-  expect(pickTranscript(session({ id: 'local_fork1', lastActivityMs: 5_000_000 }), files, P)).toBe(`${dir}fork1.jsonl`)
 })
 
 test('the app list is read loosely', () => {

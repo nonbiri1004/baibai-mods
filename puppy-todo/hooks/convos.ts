@@ -43,7 +43,6 @@ export function parseSessions(text: string): Session[] {
 export const SAME_MOMENT_MS = 5_000
 
 export function pickTranscript(s: Session, files: readonly { path: string; mtimeMs: number }[], projects: string): string | null {
-  const dir = `${projects}/${projectDir(s.cwd)}/`
   const mine = folderFiles(s, files, projects)
   let best: { path: string; gap: number } | null = null
   for (const f of mine) {
@@ -52,13 +51,9 @@ export function pickTranscript(s: Session, files: readonly { path: string; mtime
       best = { path: f.path, gap }
     }
   }
-  if (best && best.gap <= SAME_MOMENT_MS) {
-    return best.path
-  }
-  // the app's id often is the first transcript's name
-  const named = `${dir}${s.id.replace(/^local_/, '')}.jsonl`
-
-  return mine.some(f => f.path === named) ? named : null
+  // the file named after the app's id is only the first transcript: a reopened conversation goes on
+  // in a newer one, so without a match in time the title match (newest first) decides
+  return best && best.gap <= SAME_MOMENT_MS ? best.path : null
 }
 
 // when no transcript changed at the last activity (the app moves that time when a conversation is
