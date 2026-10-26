@@ -410,25 +410,11 @@ export function bornAt(item: Item): number {
   return new Date(y, mo - 1, d, hh, mm).getTime()
 }
 
+// by whole days as the pane shows them (ago rounds), so every "8d" is old and no "7d" is
 export function isStale(item: Item, now: number): boolean {
   const at = bornAt(item)
 
-  return !Number.isNaN(at) && now - at > STALE_DAYS * DAY
-}
-
-// one color per project, the same every time: the app's theme names, so light and dark both work.
-// only names that look different from each other in every theme, the 16-color ones too
-// (suggestion and permission are one color, so are autoAccept and merged). not success, warning or error
-// (they mean something), not claude (orange is for the headphones), not bashBorder (the pink for old items)
-export const PROJECT_COLORS = ['suggestion', 'planMode', 'ide', 'autoAccept'] as const
-
-export function projectColor(project: string): (typeof PROJECT_COLORS)[number] {
-  let h = 0
-  for (const ch of project) {
-    h = (h * 31 + ch.codePointAt(0)!) >>> 0
-  }
-
-  return PROJECT_COLORS[h % PROJECT_COLORS.length] ?? PROJECT_COLORS[0]
+  return !Number.isNaN(at) && Math.round((now - at) / DAY) > STALE_DAYS
 }
 
 // a link in few columns, for the terminal: github/owner/repo/pull/16 → #16, else the host

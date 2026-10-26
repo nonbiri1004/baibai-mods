@@ -3,7 +3,6 @@ import { expect, test } from 'claude-code/testing'
 import type { Item, PrState, Talk } from '../types'
 import {
   FACES,
-  PROJECT_COLORS,
   bornAt,
   byProject,
   declareDone,
@@ -21,7 +20,6 @@ import {
   parseScan,
   prAnswer,
   prKey,
-  projectColor,
   projectOf,
   recentAsks,
   reopen,
@@ -228,13 +226,6 @@ test('an item is old after 7 days, by createdAt or else by the time in its id', 
   expect(isStale(item({ createdAt: '2026-10-18T14:00:00Z' }), NOW)).toBe(false)
   // no time known: not called old
   expect(isStale(item({ id: 'hand-written' }), NOW)).toBe(false)
-})
-
-test('a project keeps its color, and every color is a theme name', () => {
-  expect(projectColor('baibai-music')).toBe(projectColor('baibai-music'))
-  const used = new Set(['a', 'baibai-music', 'baibai-tools', 'puppy-mods', 'home', 'ai-video-pipeline'].map(projectColor))
-  expect(used.size > 1).toBe(true)
-  for (const c of used) expect(PROJECT_COLORS.includes(c)).toBe(true)
 })
 
 test('a link gets short for the terminal', () => {

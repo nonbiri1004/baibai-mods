@@ -32,14 +32,15 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
   - `warning`: something waits for you.
   - `error`: something broke.
   - `success`: something is working right now.
-  - `bashBorder` (pink): something got old, like a to-do open for more than 7 days.
-  - A group's own color (a project): a left bar and its name, from a short list of theme names that look different in every theme, 16-color ones too: `suggestion`, `planMode`, `ide`, `autoAccept`. Pick by the name, so a project keeps its color. See `projectColor` in `puppy-todo/hooks/todo.ts`.
   - Everything else: `dimColor`, or the normal text color.
 - One color word per line at most. Color the word that matters (the state, the label), not the whole line.
+- No color per project or per group: groups are told apart by cards and names, in greys. Something old or important gets the full text color, bold, and a small mark, not a new color.
+- A grey bar down a list's left edge is a dim `▎` on each row, not a Box with a `backgroundColor`: a theme's grey fill turns white in 16-color themes.
 
 ## Pictures (SVG)
 
 - Only where the surface has `Svg` (the desktop app). The terminal gets the same facts as text lines: never drop a fact because there is no picture.
+- Small icons are 14×14 pixel drawings in greys only, like lofipuppy.app's `PixelIcon` (see `puppy-todo/hooks/icons.ts`); the terminal shows a text mark in their place.
 - Warm greys, light by day and dark by night with `prefers-color-scheme`. Copy the palette from `puppy-pipelines/hooks/draw.ts` (`--card`, `--line`, `--text`, `--muted`, and the soft `--ok` / `--listen` / `--reject`).
 - Pixel art keeps `shape-rendering="crispEdges"`.
 - The puppy's drawing comes from baibai-brand (generated, see `brand.lock.json`). Never draw or edit the puppy by hand here.

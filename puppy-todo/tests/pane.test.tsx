@@ -70,8 +70,12 @@ test('the pane: tick and ✕ on to-dos, no buttons on PR rows, done and tidy-up 
     expect((await ui.find({ type: 'Text', text: /↗ 1 waiting for merge/ }))?.text).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /○ 2 open/ }))?.text).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /^1 item older than 7 days$/ }))?.text).toBeTruthy()
-    // each project has a bar in its color; an open to-do ticks with ○ and shows its age
-    expect(await ui.find({ type: 'Box', key: 'bar-p-home' })).toBeTruthy()
+    // each project is its own card with a grey bar; an open to-do ticks with ○ and shows its age
+    expect(await ui.find({ type: 'Box', key: 'card-p-home' })).toBeTruthy()
+    expect(await ui.find({ type: 'Box', key: 'bar-p-home-new' })).toBeTruthy()
+    // an old item gets a mark beside its age
+    expect(await ui.find({ type: 'Box', key: 'old-mine' })).toBeTruthy()
+    expect(await ui.find({ type: 'Box', key: 'old-new' })).toBeFalsy()
     expect((await ui.find({ type: 'Button', key: 'tick-new' }))?.text).toBe('○')
     expect((await ui.find({ type: 'Text', text: /^2h$/ }))?.text).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /^10d$/ }))?.text).toBeTruthy()

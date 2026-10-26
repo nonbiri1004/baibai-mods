@@ -2,6 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, RenderChildren } from 'claude-code'
 
 import type { Convo, Item, PrSource, PrState, Session, Talk, View, WorktreeState } from '../types'
+import { iconSvg, MARKS } from './icons'
+import type { IconName } from './icons'
 import { folderFiles, isWorktree, matchByTime, parseSessions, parseWorktree, pickByTitle, sortConvos, verdictOf } from './convos'
 import {
   FACES,
@@ -26,7 +28,6 @@ import {
   prAnswer,
   prKey,
   prUrl,
-  projectColor,
   projectOf,
   recentAsks,
   reopen,
@@ -44,8 +45,6 @@ const TALK_MAX = 40
 // how often the pane looks again (the shared list, transcripts); gh only every GH_EVERY
 const TICK = 60_000
 const GH_EVERY = 5 * 60_000
-// the color for "this waited too long": the app's pink, apart from warning (waits for you) and error (broke)
-const STALE = 'bashBorder'
 
 const EMPTY: View = {
   here: { id: '', title: '', project: '', cwd: '' },
@@ -634,6 +633,10 @@ export const register: Register = on => {
     )
     // the ✕ shows when the pointer is on the row (the desktop); with no pointer it always shows
     const hasPointer = e.surface === 'desktop'
+    // a grey pixel icon where the surface draws pictures, its text mark elsewhere (the terminal)
+    const hasSvg = isGraphical && 'Svg' in table
+    const icon = (name: IconName, alt: string) =>
+      hasSvg && 'Svg' in table ? <table.Svg source={iconSvg(name)} alt={alt} width={14} height={14} /> : <Text dimColor>{MARKS[name]}</Text>
     // a narrow pane keeps the words: the facts on the right get shorter
     const isNarrow = width < 50
     // an open to-do: ○ to tick it, its words, then on the right its age and a ✕.
@@ -646,14 +649,15 @@ export const register: Register = on => {
       const wait = o.state === 'unknown' ? (isNarrow ? 'unchecked' : 'not checked yet') : isNarrow ? 'to merge' : 'waiting for merge'
       const link = i.link?.startsWith('https://') ? i.link : undefined
       const age = Number.isNaN(born) ? '' : ago(now, born)
+      const isOld = isStale(i, now)
       // the columns the bar, the mark and the facts on the right take, each with its gap
-      const right = 6 + (isPr ? wait.length + 1 : 2) + (link ? (isGraphical ? 4 : shortLink(link).length) + 1 : 0) + (age ? age.length + 1 : 0)
+      const right = 6 + (isPr ? wait.length + 1 : 2) + (link ? (isGraphical ? 4 : shortLink(link).length) + 1 : 0) + (age ? age.length + 1 + (isOld ? 2 : 0) : 0)
 
       return (
         <Box key={`i-${i.id}`} flexDirection="row" gap={1} alignItems="center" hover={{ scope }}>
           {/* one width for the tick and the arrow, so the words line up */}
           <Box width={3} flexShrink={0} justifyContent="center">
-            {isPr ? <Text dimColor>↗</Text> : <Button key={`tick-${i.id}`} label="○" plain onPress={() => press($, i.id, 'done')} />}
+            {isPr ? icon('pr', 'waiting for merge') : <Button key={`tick-${i.id}`} label="○" plain dimColor onPress={() => press($, i.id, 'done')} />}
           </Box>
           <Box flexGrow={1} flexShrink={1} minWidth={0}>
             <Text wrap="truncate-end">{fit(i.text, inner - right)}</Text>
@@ -665,7 +669,15 @@ export const register: Register = on => {
               // the terminal prints a link's whole address; a short name keeps the row on one line
               isGraphical ? <Link href={link} label="link" /> : <Text dimColor>{shortLink(link)}</Text>
             ) : null}
-            {age ? <Text {...(isStale(i, now) ? { color: STALE } : { dimColor: true })}>{age}</Text> : null}
+            {age && isOld ? (
+              // old: the age in the full text color, bold, after a small mark; still grey, no color
+              <Box key={`old-${i.id}`} flexDirection="row" gap={1}>
+                {icon('old', 'older than a week')}
+                <Text weight="bold">{age}</Text>
+              </Box>
+            ) : age ? (
+              <Text dimColor>{age}</Text>
+            ) : null}
           </Box>
           {isPr ? null : (
             <Box {...(hasPointer ? { display: 'none', hover: { scope, display: 'flex' } } : {})}>
@@ -675,27 +687,20 @@ export const register: Register = on => {
         </Box>
       )
     }
-    // a project's items: a bar in the project's color on the left, its name in that color, the count on the right
-    const group = (key: string, label: string, project: string, list: readonly Item[]) => {
-      const color = projectColor(project)
-
-      return (
-        <Box key={key} flexDirection="row" gap={1}>
-          <Box key={`bar-${key}`} width={1} flexShrink={0} backgroundColor={color} />
-          <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
-            <Box flexDirection="row" justifyContent="space-between" gap={1}>
-              <Box flexShrink={1} minWidth={0}>
-                <Text color={color} weight="semibold" wrap="truncate-end">
-                  {label}
-                </Text>
-              </Box>
-              <Text dimColor>{list.length}</Text>
+    // a project's items, each project its own card: a dim bar down the left edge, the rows beside it.
+    // the bar is a dim mark on each row, not a filled Box: a theme's grey fill is white in 16-color themes
+    const rows = (key: string, list: readonly Item[]) => (
+      <Box key={`rows-${key}`} flexDirection="column">
+        {list.map(i => (
+          <Box key={`bar-${key}-${i.id}`} flexDirection="row" gap={1}>
+            <Text dimColor>▎</Text>
+            <Box flexGrow={1} flexShrink={1} minWidth={0}>
+              {row(i)}
             </Box>
-            {list.map(i => row(i))}
           </Box>
-        </Box>
-      )
-    }
+        ))}
+      </Box>
+    )
     const waiting = open.filter(i => sourceOf(i) !== null).length
     const stale = open.filter(i => isStale(i, now)).length
     const ASKS_SHOWN = 3
@@ -714,16 +719,24 @@ export const register: Register = on => {
 
         {open.length > 0 && (
           <Box key="summary" flexDirection="column">
+            {/* grey only: the counts in the text color, the words dim */}
             <Text wrap="truncate-end">
-              {waiting > 0 ? <Text color="warning">↗ {waiting} waiting for merge</Text> : null}
-              <Text dimColor>
-                {waiting > 0 ? ' · ' : ''}○ {open.length - waiting} open
-              </Text>
+              {waiting > 0 ? (
+                <Text>
+                  ↗ {waiting}
+                  <Text dimColor> waiting for merge · </Text>
+                </Text>
+              ) : null}
+              ○ {open.length - waiting}
+              <Text dimColor> open</Text>
             </Text>
             {stale > 0 ? (
-              <Text color={STALE} wrap="truncate-end">
-                {stale} {stale === 1 ? 'item' : 'items'} older than {STALE_DAYS} days
-              </Text>
+              <Box key="old" flexDirection="row" gap={1}>
+                {icon('old', 'older than a week')}
+                <Text weight="bold" wrap="truncate-end">
+                  {stale} {stale === 1 ? 'item' : 'items'} older than {STALE_DAYS} days
+                </Text>
+              </Box>
             ) : null}
           </Box>
         )}
@@ -771,11 +784,17 @@ export const register: Register = on => {
                 }}
               />
             ) : null}
-            {mine.length > 0 ? group('here', 'this conversation', v.here.project, mine) : null}
-            {byProject(others).map(([project, list]) => group(`p-${project}`, project, project, list))}
+            {mine.length > 0 ? (
+              <Box key="here" flexDirection="column">
+                <Text dimColor>this conversation</Text>
+                {rows('here', mine)}
+              </Box>
+            ) : null}
             {open.length === 0 ? <Text dimColor>nothing to do. the puppy naps.</Text> : null}
           </Box>,
         )}
+
+        {byProject(others).map(([project, list]) => card(`p-${project}`, project, `${list.length}`, rows(`p-${project}`, list)))}
 
         {done.length > 0 && (
           <Box flexDirection="column">
