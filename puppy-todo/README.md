@@ -3,27 +3,33 @@
 a to-do pane beside the chat, shared by every conversation. when you come back to a conversation it tells you what this one was doing, what other conversations asked you, and what is left.
 
 ```
-•ᴥ• 3 to-do · 1 asked you
-
-notes app · my-app
-last: the list works; offline sync is next.
-
-asked you 1
-  games chat · 3h
-    make the office prototype first?
-
-to-do 3
-[add a to-do…]
-
-this conversation
-☐ test offline sync
-
-my-app
-☐ write the retry docs
-↗ merge the notes PR · waiting for merge
+•ᴥ• 3 to-do · 1 asked you                 refresh
+╭─────────────────────────────────────────────╮
+│ notes app                            my-app │
+│ last: the list works; offline sync is next. │
+╰─────────────────────────────────────────────╯
+╭─────────────────────────────────────────────╮
+│ asked you                         1 waiting │
+│ games chat · 3h                             │
+│   make the office prototype first?          │
+╰─────────────────────────────────────────────╯
+╭─────────────────────────────────────────────╮
+│ to-do                                3 open │
+│ [add a to-do…]                              │
+│                                             │
+│ this conversation                           │
+│ ☐ test offline sync                         │
+│                                             │
+│ my-app                                      │
+│ ☐ write the retry docs                      │
+│ ↗ merge the notes PR · waiting for merge    │
+╰─────────────────────────────────────────────╯
 ▸ done 8
 ▸ tidy up: 32 of 80 conversations have nothing open
+looked at 14:05
 ```
+
+it looks like the other puppy mods: one card per part ([style](../STYLE.md)).
 
 it opens by itself when a session starts. `/todo` opens it again; `/todo <text>` adds a to-do for this conversation.
 

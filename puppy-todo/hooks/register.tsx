@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren } from 'claude-code'
 
 import type { Convo, Item, PrSource, PrState, Session, Talk, View, WorktreeState } from '../types'
 import { folderFiles, isWorktree, matchByTime, parseSessions, parseWorktree, pickByTitle, sortConvos, verdictOf } from './convos'
@@ -608,11 +608,19 @@ export const register: Register = on => {
     const asks = recentAsks(v.talks, now)
     const clear = (v.convos ?? []).filter(c => c.verdict.state === 'clear')
 
-    const head = (label: string, count?: number) => (
-      <Text bold>
-        {label}
-        {count !== undefined ? <Text dimColor> {count}</Text> : null}
-      </Text>
+    // inside a card: the border and padding take 4 columns (STYLE.md)
+    const inner = width - 4
+    // a card: a rounded dim border, the name on the left, quiet facts on the right
+    const card = (key: string, name: string, right: RenderChildren, body: RenderChildren) => (
+      <Box key={`card-${key}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap="xs">
+        <Box flexDirection="row" justifyContent="space-between" gap={1}>
+          <Box flexShrink={1}>
+            <Text weight="semibold">{name}</Text>
+          </Box>
+          <Text dimColor>{right}</Text>
+        </Box>
+        {body}
+      </Box>
     )
     // the ✕ shows when the pointer is on the row (the desktop); with no pointer it always shows
     const hasPointer = e.surface === 'desktop'
@@ -627,7 +635,7 @@ export const register: Register = on => {
           {isPr ? <Text dimColor> ↗ </Text> : <Button key={`tick-${i.id}`} label="☐" plain onPress={() => press($, i.id, 'done')} />}
           <Box flexGrow={1} flexShrink={1}>
             <Text>
-              {clip(i.text, width - 10)}
+              {clip(i.text, inner - 10)}
               {isPr ? <Text dimColor> · {o.state === 'unknown' ? 'not checked yet' : 'waiting for merge'}</Text> : null}
             </Text>
           </Box>
@@ -641,7 +649,7 @@ export const register: Register = on => {
       )
     }
     const group = (key: string, label: string, list: readonly Item[]) => (
-      <Box key={key} flexDirection="column" marginTop={1}>
+      <Box key={key} flexDirection="column">
         <Text dimColor>{label}</Text>
         {list.map(i => row(i))}
       </Box>
@@ -650,53 +658,64 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Text>
-          {FACES[mood(asks.length, open.length)]}
-          <Text dimColor> {saying(asks.length, open.length)}</Text>
-        </Text>
-
-        <Box flexDirection="column">
-          <Text bold>
-            {clip(v.here.title || 'this conversation', width - v.here.project.length - 4)}
-            <Text dimColor> · {v.here.project}</Text>
-          </Text>
-          {v.here.recap ? <Text dimColor>last: {clip(v.here.recap, width - 6)}</Text> : null}
+        <Box flexDirection="row" justifyContent="space-between" gap={1}>
+          <Box flexShrink={1}>
+            <Text>
+              {FACES[mood(asks.length, open.length)]}
+              <Text dimColor> {saying(asks.length, open.length)}</Text>
+            </Text>
+          </Box>
+          <Button key="refresh" label="refresh" dimColor onPress={() => refresh($, true)} />
         </Box>
 
-        {asks.length > 0 && (
-          <Box flexDirection="column">
-            {head('asked you', asks.length)}
-            {asks.slice(0, ASKS_SHOWN).map(t => (
-              <Box key={`ask-${t.id}`} flexDirection="column">
-                <Text>
-                  {clip(t.title, width - 16)}
-                  <Text dimColor> · {ago(now, t.mtimeMs)}</Text>
-                </Text>
-                <Text dimColor>  {clip(t.ask ?? '', width - 2)}</Text>
-              </Box>
-            ))}
-            {asks.length > ASKS_SHOWN ? <Text dimColor>and {asks.length - ASKS_SHOWN} more</Text> : null}
-          </Box>
+        {card(
+          'here',
+          clip(v.here.title || 'this conversation', inner - v.here.project.length - 4),
+          v.here.project,
+          v.here.recap ? <Text dimColor>last: {clip(v.here.recap, inner - 6)}</Text> : null,
         )}
 
-        <Box flexDirection="column">
-          {head('to-do', open.length)}
-          {Input ? (
-            <Input
-              key="add"
-              placeholder="add a to-do…"
-              submitLabel="add"
-              onSubmit={said => {
-                if (said.trim() !== '') {
-                  void add($, said, { by: 'person' })
-                }
-              }}
-            />
-          ) : null}
-          {mine.length > 0 ? group('here', 'this conversation', mine) : null}
-          {byProject(others).map(([project, list]) => group(`p-${project}`, project, list))}
-          {open.length === 0 ? <Text dimColor>nothing to do. the puppy naps.</Text> : null}
-        </Box>
+        {asks.length > 0 &&
+          card(
+            'asks',
+            'asked you',
+            <Text color="warning">{asks.length} waiting</Text>,
+            <Box flexDirection="column">
+              {asks.slice(0, ASKS_SHOWN).map(t => (
+                <Box key={`ask-${t.id}`} flexDirection="column">
+                  <Text>
+                    {clip(t.title, inner - 16)}
+                    <Text dimColor> · {ago(now, t.mtimeMs)}</Text>
+                  </Text>
+                  <Text dimColor>  {clip(t.ask ?? '', inner - 2)}</Text>
+                </Box>
+              ))}
+              {asks.length > ASKS_SHOWN ? <Text dimColor>and {asks.length - ASKS_SHOWN} more</Text> : null}
+            </Box>,
+          )}
+
+        {card(
+          'todo',
+          'to-do',
+          `${open.length} open`,
+          <Box flexDirection="column" gap={1}>
+            {Input ? (
+              <Input
+                key="add"
+                placeholder="add a to-do…"
+                submitLabel="add"
+                onSubmit={said => {
+                  if (said.trim() !== '') {
+                    void add($, said, { by: 'person' })
+                  }
+                }}
+              />
+            ) : null}
+            {mine.length > 0 ? group('here', 'this conversation', mine) : null}
+            {byProject(others).map(([project, list]) => group(`p-${project}`, project, list))}
+            {open.length === 0 ? <Text dimColor>nothing to do. the puppy naps.</Text> : null}
+          </Box>,
+        )}
 
         {done.length > 0 && (
           <Box flexDirection="column">
@@ -756,13 +775,10 @@ export const register: Register = on => {
           </Box>
         )}
 
-        <Box flexDirection="row" gap={1}>
-          <Button key="refresh" label="refresh" dimColor onPress={() => refresh($, true)} />
-          <Text dimColor>
-            looked at {clockTime(now)}
-            {v.notes.length > 0 ? ` · ${v.notes.join(' · ')}` : ''}
-          </Text>
-        </Box>
+        <Text dimColor>
+          looked at {clockTime(now)}
+          {v.notes.length > 0 ? ` · ${v.notes.join(' · ')}` : ''}
+        </Text>
       </Box>
     )
   })

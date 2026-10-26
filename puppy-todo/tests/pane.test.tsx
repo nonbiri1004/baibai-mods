@@ -60,6 +60,11 @@ test('the pane: tick and ✕ on to-dos, no buttons on PR rows, done and tidy-up 
   for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
     expect((await ui.find({ type: 'Text', text: /2 to-do · 1 asked you/ }))?.text).toBeTruthy()
+    // each part is a card (STYLE.md); refresh sits on the first row
+    for (const key of ['card-here', 'card-asks', 'card-todo']) expect(await ui.find({ type: 'Box', key })).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /1 waiting/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /2 open/ }))?.text).toBeTruthy()
+    expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /last: built the list/ }))?.text).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /make the office\?/ }))?.text).toBeTruthy()
     // an item from an earlier session of this conversation is here, with a tick and a ✕
