@@ -5,10 +5,10 @@ import type { Problem, Snapshot, Status } from '../types'
 import { detailLines, picture, W } from './draw'
 import { ago, alerts, expandHome, isStale, parseStatus, sortCards, textBar, titleOf } from './format'
 
-const PANE = 'puppy-pipelines'
+const PANE = 'puppy-console'
 const REFRESH_MS = 60_000
 
-const snapshot = atom({ plugin: 'puppy-pipelines', key: 'snapshot' } as const, null)
+const snapshot = atom({ plugin: 'puppy-console', key: 'snapshot' } as const, null)
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
@@ -75,16 +75,16 @@ export const register: Register = (on, options) => {
   const isNotifying = options.notify !== 'off'
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'pipelines', description: 'Open the pipeline cards' })
+    await $.command.register({ name: 'console', description: 'Open the pipeline cards' })
     void refresh($, setting, isNotifying)
     // Like setInterval in a component's mount: each tick reads the folder again and the pane redraws.
     $.clock.every(REFRESH_MS, () => refresh($, setting, isNotifying))
     return next(e)
   })
 
-  on('command.run', { command: 'pipelines' }, async $ => {
+  on('command.run', { command: 'console' }, async $ => {
     await refresh($, setting, isNotifying)
-    await $.ui.open({ id: PANE, title: 'pipelines' })
+    await $.ui.open({ id: PANE, title: 'console' })
     return { text: 'pipeline cards opened.' }
   })
 
@@ -141,7 +141,7 @@ export const register: Register = (on, options) => {
         {snap.dirError && (
           <Box flexDirection="column">
             <Text color="error">can't read the status folder: {snap.dirError}</Text>
-            <Text dimColor>set it in /config → puppy-pipelines → status folder{snap.dir ? ` (now ${snap.dir})` : ''}</Text>
+            <Text dimColor>set it in /config → puppy-console → status folder{snap.dir ? ` (now ${snap.dir})` : ''}</Text>
           </Box>
         )}
         {!snap.dirError && snap.cards.length === 0 && snap.problems.length === 0 && (
