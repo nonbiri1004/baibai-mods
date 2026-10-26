@@ -4,7 +4,7 @@ export type Item = {
   schemaVersion?: number
   id: string
   text: string
-  // the repo or project it belongs to, e.g. lofi-puppy
+  // the repo or project it belongs to, e.g. baibai-music
   project: string
   // todo: the person does it; ask: a question waiting for the person; later: a conversation said it would do it later
   kind: Kind
