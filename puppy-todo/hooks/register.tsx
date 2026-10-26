@@ -1,5 +1,5 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, RenderChildren } from 'claude-code'
 
 import type { Convo, Item, PrSource, PrState, Session, Talk, View, WorktreeState } from '../types'
 import { folderFiles, isWorktree, matchByTime, parseSessions, parseWorktree, pickByTitle, sortConvos, verdictOf } from './convos'
@@ -608,11 +608,22 @@ export const register: Register = on => {
     const asks = recentAsks(v.talks, now)
     const clear = (v.convos ?? []).filter(c => c.verdict.state === 'clear')
 
-    const head = (label: string, count?: number) => (
-      <Text bold>
-        {label}
-        {count !== undefined ? <Text dimColor> {count}</Text> : null}
-      </Text>
+    // inside a card: the border and padding take 4 columns (STYLE.md)
+    const inner = width - 4
+    // the terminal cuts by columns; a graphical surface measures the words and cuts at the edge itself
+    const isGraphical = e.surface !== 'terminal'
+    const fit = (text: string, max: number) => clip(text, isGraphical ? 300 : max)
+    // a card: a rounded dim border, the name on the left, quiet facts on the right
+    const card = (key: string, name: string, right: RenderChildren, body: RenderChildren) => (
+      <Box key={`card-${key}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap="xs">
+        <Box flexDirection="row" justifyContent="space-between" gap={1}>
+          <Box flexShrink={1} minWidth={0}>
+            <Text weight="semibold" wrap="truncate-end">{name}</Text>
+          </Box>
+          <Text dimColor>{right}</Text>
+        </Box>
+        {body}
+      </Box>
     )
     // the ✕ shows when the pointer is on the row (the desktop); with no pointer it always shows
     const hasPointer = e.surface === 'desktop'
@@ -624,13 +635,14 @@ export const register: Register = on => {
 
       return (
         <Box key={`i-${i.id}`} flexDirection="row" gap={1} alignItems="center" hover={{ scope }}>
-          {isPr ? <Text dimColor> ↗ </Text> : <Button key={`tick-${i.id}`} label="☐" plain onPress={() => press($, i.id, 'done')} />}
-          <Box flexGrow={1} flexShrink={1}>
-            <Text>
-              {clip(i.text, width - 10)}
-              {isPr ? <Text dimColor> · {o.state === 'unknown' ? 'not checked yet' : 'waiting for merge'}</Text> : null}
-            </Text>
+          {/* one width for the tick and the arrow, so the words line up */}
+          <Box width={3} justifyContent="center">
+            {isPr ? <Text dimColor>↗</Text> : <Button key={`tick-${i.id}`} label="☐" plain onPress={() => press($, i.id, 'done')} />}
           </Box>
+          <Box flexGrow={1} flexShrink={1} minWidth={0}>
+            <Text wrap="truncate-end">{fit(i.text, inner - 10)}</Text>
+          </Box>
+          {isPr ? <Text dimColor>{o.state === 'unknown' ? 'not checked yet' : 'waiting for merge'}</Text> : null}
           {i.link?.startsWith('https://') ? <Link href={i.link} label="link" /> : null}
           {isPr ? null : (
             <Box {...(hasPointer ? { display: 'none', hover: { scope, display: 'flex' } } : {})}>
@@ -641,7 +653,7 @@ export const register: Register = on => {
       )
     }
     const group = (key: string, label: string, list: readonly Item[]) => (
-      <Box key={key} flexDirection="column" marginTop={1}>
+      <Box key={key} flexDirection="column">
         <Text dimColor>{label}</Text>
         {list.map(i => row(i))}
       </Box>
@@ -650,53 +662,64 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Text>
-          {FACES[mood(asks.length, open.length)]}
-          <Text dimColor> {saying(asks.length, open.length)}</Text>
-        </Text>
-
-        <Box flexDirection="column">
-          <Text bold>
-            {clip(v.here.title || 'this conversation', width - v.here.project.length - 4)}
-            <Text dimColor> · {v.here.project}</Text>
-          </Text>
-          {v.here.recap ? <Text dimColor>last: {clip(v.here.recap, width - 6)}</Text> : null}
+        <Box flexDirection="row" justifyContent="space-between" gap={1}>
+          <Box flexShrink={1} minWidth={0}>
+            <Text>
+              {FACES[mood(asks.length, open.length)]}
+              <Text dimColor> {saying(asks.length, open.length)}</Text>
+            </Text>
+          </Box>
+          <Button key="refresh" label="refresh" dimColor onPress={() => refresh($, true)} />
         </Box>
 
-        {asks.length > 0 && (
-          <Box flexDirection="column">
-            {head('asked you', asks.length)}
-            {asks.slice(0, ASKS_SHOWN).map(t => (
-              <Box key={`ask-${t.id}`} flexDirection="column">
-                <Text>
-                  {clip(t.title, width - 16)}
-                  <Text dimColor> · {ago(now, t.mtimeMs)}</Text>
-                </Text>
-                <Text dimColor>  {clip(t.ask ?? '', width - 2)}</Text>
-              </Box>
-            ))}
-            {asks.length > ASKS_SHOWN ? <Text dimColor>and {asks.length - ASKS_SHOWN} more</Text> : null}
-          </Box>
+        {card(
+          'here',
+          fit(v.here.title || 'this conversation', inner - v.here.project.length - 4),
+          v.here.project,
+          v.here.recap ? <Text dimColor wrap="truncate-end">last: {fit(v.here.recap, inner - 6)}</Text> : null,
         )}
 
-        <Box flexDirection="column">
-          {head('to-do', open.length)}
-          {Input ? (
-            <Input
-              key="add"
-              placeholder="add a to-do…"
-              submitLabel="add"
-              onSubmit={said => {
-                if (said.trim() !== '') {
-                  void add($, said, { by: 'person' })
-                }
-              }}
-            />
-          ) : null}
-          {mine.length > 0 ? group('here', 'this conversation', mine) : null}
-          {byProject(others).map(([project, list]) => group(`p-${project}`, project, list))}
-          {open.length === 0 ? <Text dimColor>nothing to do. the puppy naps.</Text> : null}
-        </Box>
+        {asks.length > 0 &&
+          card(
+            'asks',
+            'asked you',
+            <Text color="warning">{asks.length} waiting</Text>,
+            <Box flexDirection="column">
+              {asks.slice(0, ASKS_SHOWN).map(t => (
+                <Box key={`ask-${t.id}`} flexDirection="column">
+                  <Text wrap="truncate-end">
+                    {fit(t.title, inner - 16)}
+                    <Text dimColor> · {ago(now, t.mtimeMs)}</Text>
+                  </Text>
+                  <Text dimColor wrap="truncate-end">  {fit(t.ask ?? '', inner - 2)}</Text>
+                </Box>
+              ))}
+              {asks.length > ASKS_SHOWN ? <Text dimColor>and {asks.length - ASKS_SHOWN} more</Text> : null}
+            </Box>,
+          )}
+
+        {card(
+          'todo',
+          'to-do',
+          `${open.length} open`,
+          <Box flexDirection="column" gap={1}>
+            {Input ? (
+              <Input
+                key="add"
+                placeholder="add a to-do…"
+                submitLabel="add"
+                onSubmit={said => {
+                  if (said.trim() !== '') {
+                    void add($, said, { by: 'person' })
+                  }
+                }}
+              />
+            ) : null}
+            {mine.length > 0 ? group('here', 'this conversation', mine) : null}
+            {byProject(others).map(([project, list]) => group(`p-${project}`, project, list))}
+            {open.length === 0 ? <Text dimColor>nothing to do. the puppy naps.</Text> : null}
+          </Box>,
+        )}
 
         {done.length > 0 && (
           <Box flexDirection="column">
@@ -715,7 +738,7 @@ export const register: Register = on => {
                       <Button key={`untick-${i.id}`} label="☑" dimColor onPress={() => press($, i.id, 'open')} />
                     )}
                     <Text dimColor strikethrough>
-                      {clip(i.text, width - 8)}
+                      {fit(i.text, width - 8)}
                     </Text>
                   </Box>
                 ))
@@ -737,7 +760,7 @@ export const register: Register = on => {
                 {sortConvos(v.convos).map(c => (
                   <Box key={`c-${c.session.id}`} flexDirection="column">
                     <Text dimColor={c.verdict.state !== 'clear'}>
-                      {{ clear: '✓', open: '●', unknown: '?' }[c.verdict.state]} {clip(c.session.title, width - 24)}
+                      {{ clear: '✓', open: '●', unknown: '?' }[c.verdict.state]} {fit(c.session.title, width - 24)}
                       <Text dimColor>
                         {' '}
                         · {ago(now, c.session.lastActivityMs)}
@@ -746,9 +769,9 @@ export const register: Register = on => {
                     </Text>
                     <Text dimColor>
                       {'  '}
-                      {clip(c.verdict.reasons.length > 0 ? c.verdict.reasons.join(' · ') : 'nothing open found', width * 2)}
+                      {fit(c.verdict.reasons.length > 0 ? c.verdict.reasons.join(' · ') : 'nothing open found', width * 2)}
                     </Text>
-                    {c.recap ? <Text dimColor>  last: {clip(c.recap, width * 2)}</Text> : null}
+                    {c.recap ? <Text dimColor>  last: {fit(c.recap, width * 2)}</Text> : null}
                   </Box>
                 ))}
               </Box>
@@ -756,13 +779,10 @@ export const register: Register = on => {
           </Box>
         )}
 
-        <Box flexDirection="row" gap={1}>
-          <Button key="refresh" label="refresh" dimColor onPress={() => refresh($, true)} />
-          <Text dimColor>
-            looked at {clockTime(now)}
-            {v.notes.length > 0 ? ` · ${v.notes.join(' · ')}` : ''}
-          </Text>
-        </Box>
+        <Text dimColor>
+          looked at {clockTime(now)}
+          {v.notes.length > 0 ? ` · ${v.notes.join(' · ')}` : ''}
+        </Text>
       </Box>
     )
   })

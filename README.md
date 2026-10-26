@@ -16,6 +16,8 @@ each one does one useful thing and stays out of the way. they're free and open; 
 | [puppy-todo](puppy-todo) | a to-do pane beside the chat: what this conversation was doing, what other conversations asked you, and one shared list every conversation writes to |
 | [puppy-console](puppy-console) | a pane with one card per production pipeline (music, videos, …): what it's doing and what waits for you. each pipeline writes a small status file ([format](puppy-console/FORMAT.md)) |
 
+they all look the same way: quiet cards, warm greys, lowercase words. the rules are in [STYLE.md](STYLE.md).
+
 ## install
 
 in a claude code session in your terminal:
