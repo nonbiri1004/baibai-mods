@@ -1,13 +1,13 @@
 {
-  "name": "puppy-pipelines",
-  "version": "0.2.0",
+  "name": "puppy-console",
+  "version": "0.3.0",
   "description": "a pane with one card per production pipeline, read from small status files",
   "types": "./types/index.d.ts",
   "author": {
     "name": "lofi puppy",
     "url": "https://github.com/nonbiri1004"
   },
-  "homepage": "https://github.com/nonbiri1004/puppy-mods/tree/main/puppy-pipelines",
+  "homepage": "https://github.com/nonbiri1004/puppy-mods/tree/main/puppy-console",
   "repository": "https://github.com/nonbiri1004/puppy-mods",
   "license": "MIT",
   "keywords": ["pipeline", "status", "dashboard", "puppy", "lofi"],

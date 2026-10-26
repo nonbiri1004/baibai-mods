@@ -3,6 +3,6 @@
   "source": "nonbiri1004/baibai-brand",
   "commit": "dea47bc295af5de7327736f9322881b539891ccc",
   "files": {
-    "puppy-pipelines/hooks/puppy.ts": "sha256:fc0db61e09958480a0319f27bdfa2cb6b5558d8079521dafa91b3a591f5a44d0"
+    "puppy-console/hooks/puppy.ts": "sha256:fc0db61e09958480a0319f27bdfa2cb6b5558d8079521dafa91b3a591f5a44d0"
   }
 }

@@ -94,11 +94,11 @@ test('video jobs group by stage', () => {
 })
 
 const PANE = {
-  plugin: 'puppy-pipelines',
+  plugin: 'puppy-console',
   component: 'Pane',
-  requestId: 'puppy-pipelines',
+  requestId: 'puppy-console',
   props: {
-    title: 'pipelines',
+    title: 'console',
     isFocused: false,
     bodyColumns: 80,
     placement: 'dock',
@@ -128,12 +128,12 @@ test('the pane draws one card per file and names the files it skipped', { option
     if (text == null) throw new Error('missing')
     return { value: text }
   })
-  on('command.register', () => ({ value: { command: 'pipelines' } }))
+  on('command.register', () => ({ value: { command: 'console' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
 
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await $.command.run({ command: 'pipelines', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  await $.command.run({ command: 'console', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
 
   for (const surface of ['terminal', 'desktop'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
@@ -151,11 +151,11 @@ test('the pane draws one card per file and names the files it skipped', { option
 test('no folder set: the pane says where to set it', async ($, on) => {
   mock.env(on, { HOME: '/home/me' })
   mock.clock(on, { now: Date.parse(base.updated) + 60_000 })
-  on('command.register', () => ({ value: { command: 'pipelines' } }))
+  on('command.register', () => ({ value: { command: 'console' } }))
   on('ui.open', () => ({ value: { isPlaced: true } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
-  await $.command.run({ command: 'pipelines', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
+  await $.command.run({ command: 'console', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })
   const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
   expect((await ui.find({ type: 'Text', text: /status folder/ }))?.text).toMatch(/no status folder set/)
   await ui.unmount()
@@ -170,7 +170,7 @@ test(`the timer shows a toast when a card starts waiting (notices ${notify})`, {
   on('fs.list', () => ({ value: [{ name: 'music.json', kind: 'file', size: 1, mtimeMs: 0, isLink: false }] }))
   on('fs.read', () => ({ value: music }))
   on('ui.toast', (_, e) => { toasts.push((e as { text: string }).text); return { value: undefined } })
-  on('command.register', () => ({ value: { command: 'pipelines' } }))
+  on('command.register', () => ({ value: { command: 'console' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await clock.settle()

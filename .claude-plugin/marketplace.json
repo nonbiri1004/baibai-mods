@@ -19,8 +19,8 @@
       "description": "one quiet to-do pane for every conversation: what this one is for, questions waiting on you, PRs to merge, and what's left"
     },
     {
-      "name": "puppy-pipelines",
-      "source": "./puppy-pipelines",
+      "name": "puppy-console",
+      "source": "./puppy-console",
       "description": "a pane with one card per production pipeline, read from small status files"
     }
   ]
