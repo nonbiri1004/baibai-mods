@@ -2,7 +2,7 @@
 
 - **What this is:** small claude code mods kept by the lofi puppy: puppy-bowl, puppy-todo, puppy-pipelines.
 - **What this isn't:** the puppy's apps, games or music; those live in other (private) repos.
-- **Related:** `puppy-pipelines/hooks/puppy.ts` is generated from baibai-tools (`shared/src/sprite.ts`); lofi-puppy and video-pipeline write the status files puppy-pipelines shows.
+- **Related:** `puppy-pipelines/hooks/puppy.ts` is generated from baibai-brand; baibai-music and ai-video-pipeline write the status files puppy-pipelines shows.
 
 small, quiet mods for [claude code](https://claude.com/claude-code), kept by the lofi puppy.
 
