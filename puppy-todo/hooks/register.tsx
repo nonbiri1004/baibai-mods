@@ -617,7 +617,7 @@ export const register: Register = on => {
     const card = (key: string, name: string, right: RenderChildren, body: RenderChildren) => (
       <Box key={`card-${key}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap="xs">
         <Box flexDirection="row" justifyContent="space-between" gap={1}>
-          <Box flexShrink={1}>
+          <Box flexShrink={1} minWidth={0}>
             <Text weight="semibold" wrap="truncate-end">{name}</Text>
           </Box>
           <Text dimColor>{right}</Text>
@@ -639,7 +639,7 @@ export const register: Register = on => {
           <Box width={3} justifyContent="center">
             {isPr ? <Text dimColor>↗</Text> : <Button key={`tick-${i.id}`} label="☐" plain onPress={() => press($, i.id, 'done')} />}
           </Box>
-          <Box flexGrow={1} flexShrink={1}>
+          <Box flexGrow={1} flexShrink={1} minWidth={0}>
             <Text wrap="truncate-end">{fit(i.text, inner - 10)}</Text>
           </Box>
           {isPr ? <Text dimColor>{o.state === 'unknown' ? 'not checked yet' : 'waiting for merge'}</Text> : null}
@@ -663,7 +663,7 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="row" justifyContent="space-between" gap={1}>
-          <Box flexShrink={1}>
+          <Box flexShrink={1} minWidth={0}>
             <Text>
               {FACES[mood(asks.length, open.length)]}
               <Text dimColor> {saying(asks.length, open.length)}</Text>
