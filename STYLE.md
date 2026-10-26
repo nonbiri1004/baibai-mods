@@ -1,6 +1,6 @@
 # puppy mods style
 
-How every puppy mod looks, so they feel like one family. `puppy-pipelines` is the reference: when this file and that mod disagree, fix one of them.
+How every puppy mod looks, so they feel like one family. `puppy-console` is the reference: when this file and that mod disagree, fix one of them.
 
 ## Panes are cards
 
@@ -37,7 +37,7 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
 ## Pictures (SVG)
 
 - Only where the surface has `Svg` (the desktop app). The terminal gets the same facts as text lines: never drop a fact because there is no picture.
-- Warm greys, light by day and dark by night with `prefers-color-scheme`. Copy the palette from `puppy-pipelines/hooks/draw.ts` (`--card`, `--line`, `--text`, `--muted`, and the soft `--ok` / `--listen` / `--reject`).
+- Warm greys, light by day and dark by night with `prefers-color-scheme`. Copy the palette from `puppy-console/hooks/draw.ts` (`--card`, `--line`, `--text`, `--muted`, and the soft `--ok` / `--listen` / `--reject`).
 - Pixel art keeps `shape-rendering="crispEdges"`.
 - The puppy's drawing comes from baibai-brand (generated, see `brand.lock.json`). Never draw or edit the puppy by hand here.
 - The puppy wears headphones only for music things. The orange is only for the headphones; no other orange.
