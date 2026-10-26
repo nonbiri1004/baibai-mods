@@ -391,3 +391,55 @@ export function ago(now: number, ms: number): string {
 
   return hours < 48 ? `${hours}h` : `${Math.round(hours / 24)}d`
 }
+
+// an open item older than this gets its age in color, and counts in the warning at the top
+export const STALE_DAYS = 7
+
+// when an item was written: createdAt, else the time in its id (20261024-1432-…, local time); NaN when neither tells
+export function bornAt(item: Item): number {
+  const at = Date.parse(item.createdAt)
+  if (!Number.isNaN(at)) {
+    return at
+  }
+  const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(item.id)
+  if (!m) {
+    return Number.NaN
+  }
+  const [y = 0, mo = 1, d = 1, hh = 0, mm = 0] = m.slice(1).map(Number)
+
+  return new Date(y, mo - 1, d, hh, mm).getTime()
+}
+
+export function isStale(item: Item, now: number): boolean {
+  const at = bornAt(item)
+
+  return !Number.isNaN(at) && now - at > STALE_DAYS * DAY
+}
+
+// one color per project, the same every time: the app's theme names, so light and dark both work.
+// only names that look different from each other in every theme, the 16-color ones too
+// (suggestion and permission are one color, so are autoAccept and merged). not success, warning or error
+// (they mean something), not claude (orange is for the headphones), not bashBorder (the pink for old items)
+export const PROJECT_COLORS = ['suggestion', 'planMode', 'ide', 'autoAccept'] as const
+
+export function projectColor(project: string): (typeof PROJECT_COLORS)[number] {
+  let h = 0
+  for (const ch of project) {
+    h = (h * 31 + ch.codePointAt(0)!) >>> 0
+  }
+
+  return PROJECT_COLORS[h % PROJECT_COLORS.length] ?? PROJECT_COLORS[0]
+}
+
+// a link in few columns, for the terminal: github/owner/repo/pull/16 → #16, else the host
+export function shortLink(url: string): string {
+  const gh = /^https:\/\/github\.com\/[^/]+\/[^/]+\/(?:pull|issues)\/(\d+)/.exec(url)
+  if (gh) {
+    return `#${gh[1]}`
+  }
+  try {
+    return new URL(url).host
+  } catch {
+    return 'link'
+  }
+}

@@ -30,7 +30,8 @@ const VIEW: View = {
   here: { id: 's2', title: 'notes', project: 'app', cwd: '/x', recap: 'built the list' },
   talks: [{ id: 't', title: 'games', titles: ['games'], project: 'g', cwd: '/g', ask: 'make the office?', askId: 'toolu_1', prs: [], mtimeMs: NOW - 3_600_000 }],
   items: [
-    item({ id: 'mine', text: 'call the vet', session: { id: 's1', title: 'notes', cwd: '/x' } }),
+    item({ id: 'mine', text: 'call the vet', createdAt: '2026-10-15T10:00:00Z', session: { id: 's1', title: 'notes', cwd: '/x' } }),
+    item({ id: 'new', text: 'water the plants', project: 'home', createdAt: '2026-10-25T08:00:00Z' }),
     prItem,
     item({ id: 'gone', text: 'an old idea', deletedAt: '2026-10-25T09:00:00Z' }),
     item({ id: 'did', text: 'buy food', status: 'done', doneAt: '2026-10-25T09:00:00Z' }),
@@ -59,11 +60,21 @@ test('the pane: tick and ✕ on to-dos, no buttons on PR rows, done and tidy-up 
 
   for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /2 to-do · 1 asked you/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /3 to-do · 1 asked you/ }))?.text).toBeTruthy()
     // each part is a card (STYLE.md); refresh sits on the first row
     for (const key of ['card-here', 'card-asks', 'card-todo']) expect(await ui.find({ type: 'Box', key })).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /1 waiting/ }))?.text).toBeTruthy()
-    expect((await ui.find({ type: 'Text', text: /2 open/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /3 open/ }))?.text).toBeTruthy()
+    // the summary under the first row: what waits for merge, what is open, what is old
+    expect(await ui.find({ type: 'Box', key: 'summary' })).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /↗ 1 waiting for merge/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /○ 2 open/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /^1 item older than 7 days$/ }))?.text).toBeTruthy()
+    // each project has a bar in its color; an open to-do ticks with ○ and shows its age
+    expect(await ui.find({ type: 'Box', key: 'bar-p-home' })).toBeTruthy()
+    expect((await ui.find({ type: 'Button', key: 'tick-new' }))?.text).toBe('○')
+    expect((await ui.find({ type: 'Text', text: /^2h$/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /^10d$/ }))?.text).toBeTruthy()
     expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /last: built the list/ }))?.text).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /make the office\?/ }))?.text).toBeTruthy()

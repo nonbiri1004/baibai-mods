@@ -23,7 +23,8 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
 - Lists inside a card get a dim label above each group, not another border. One border level only.
 - Extra lists (done items, old things) stay folded below the cards: a dim button `▸ done 3`, `▾` when open.
 - Long text: on the terminal, clip by columns (a card has 4 fewer than the pane: border and padding). On the desktop, give the `Text` `wrap="truncate-end"` and let it cut at the edge; counting columns there cuts too early, most of all for Chinese. In a row, the Box around that Text needs `flexShrink={1} minWidth={0}`; without `minWidth={0}` it never gets narrower than its text and runs past the card.
-- Rows with a mark in front (☐, ↗, ✓): put the mark in a `<Box width={3}>`, so the words line up.
+- Rows with a mark in front (○, ↗, ✓): put the mark in a `<Box width={3} flexShrink={0}>`, so the words line up.
+- Facts on the right of a row (a state, a link, an age) sit in one `<Box flexShrink={0}>`: they never wrap, the words in the middle give way. On the terminal a `Link` prints its whole address, so show a short name there (`#16`).
 
 ## Colors
 
@@ -31,6 +32,8 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
   - `warning`: something waits for you.
   - `error`: something broke.
   - `success`: something is working right now.
+  - `bashBorder` (pink): something got old, like a to-do open for more than 7 days.
+  - A group's own color (a project): a left bar and its name, from a short list of theme names that look different in every theme, 16-color ones too: `suggestion`, `planMode`, `ide`, `autoAccept`. Pick by the name, so a project keeps its color. See `projectColor` in `puppy-todo/hooks/todo.ts`.
   - Everything else: `dimColor`, or the normal text color.
 - One color word per line at most. Color the word that matters (the state, the label), not the whole line.
 
