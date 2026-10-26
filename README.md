@@ -9,7 +9,7 @@ each one does one useful thing and stays out of the way. they're free and open; 
 | mod | what it does |
 | --- | --- |
 | [puppy-bowl](puppy-bowl) | the puppy's food bowl above the prompt: how much context is left, and a `compact` button when it's almost empty |
-| [puppy-todo](puppy-todo) | a to-do pane beside the chat: what this conversation is for, questions waiting on you, open PRs, and one shared list every conversation writes to |
+| [puppy-todo](puppy-todo) | a to-do pane beside the chat: what this conversation was doing, what other conversations asked you, and one shared list every conversation writes to |
 | [puppy-pipelines](puppy-pipelines) | a pane with one card per production pipeline (music, videos, …): what it's doing and what waits for you. each pipeline writes a small status file ([format](puppy-pipelines/FORMAT.md)) |
 
 ## install

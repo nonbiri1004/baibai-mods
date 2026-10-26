@@ -26,6 +26,9 @@ export type Item = {
   declaration?: Declaration
   // when it was last opened again after being done
   reopenedAt?: string
+  // deleted: never shown, the file stays
+  deletedAt?: string
+  deletedBy?: string
 }
 
 export type Kind = 'todo' | 'ask' | 'later'
@@ -55,50 +58,61 @@ export type Outcome = {
   endedAt?: string
 }
 
-// a person's "skip" for one row: ~/.claude/todo/attention/<hash>.json
-// it never says anything about done; it only hides a reminder
-export type Attention = {
-  version: 1
-  // item:<id>, ask:<conversation>, pr:<url>
-  target: string
-  state: 'dismissed' | 'active'
-  // which time this was skipped; a new question, a changed item or new PR activity has another
-  occurrence: string
-  at: string
-  by: string
-}
-
 // what one conversation's transcript says right now
 export type Talk = {
   // the transcript's file name without .jsonl (the engine's session id; a reopened conversation gets a new one)
   id: string
   title: string
+  // every title it had (a conversation can be renamed)
+  titles: string[]
   project: string
   cwd: string
   // the last wrap-up recap
   recap?: string
   // the last wrap-up question, while nothing was typed after it
   ask?: string
-  // the tool use that asked it, so one skip covers this question only
+  // the tool use that asked it
   askId?: string
   prs: string[]
   mtimeMs: number
+  // the file could not be read: nothing in it is known
+  isUnread?: boolean
 }
 
-export type Pr = { repo: string; number: number; title: string; url: string; isDraft: boolean; updatedAt: string }
+// one of the app's conversations, from its session list
+export type Session = {
+  // local_<uuid>, the app's id
+  id: string
+  title: string
+  cwd: string
+  isArchived: boolean
+  isPinned: boolean
+  lastActivityMs: number
+  prNumber?: number
+  prState?: string
+}
+
+// a worktree's git state: changed files and commits on no remote
+export type WorktreeState = { state: 'read'; changed: number; unpushed: number } | { state: 'unknown' }
+
+// clear: no open thing was found (not a promise it is finished). open: something is (reasons say what).
+// unknown: its last turn couldn't be read
+export type Verdict = { state: 'clear' | 'open' | 'unknown'; reasons: string[] }
+
+export type Convo = { session: Session; recap?: string; verdict: Verdict }
 
 export type View = {
   // this conversation
-  here: { id: string; title: string; project: string; cwd: string; goal?: string; recap?: string }
+  here: { id: string; title: string; project: string; cwd: string; recap?: string }
   talks: Talk[]
-  prs: Pr[]
   items: Item[]
   // PR states for items whose source is a PR, by prKey
   prStates: Record<string, PrState>
-  // skips, by target
-  attention: Record<string, Attention>
-  // whether the skipped rows are listed
-  isShowingSkipped: boolean
+  // every conversation the app has open, with what is still open in it; null when the app's list can't be read
+  convos: Convo[] | null
+  // the two folded rows at the bottom
+  isShowingDone: boolean
+  isShowingConvos: boolean
   // ms since the epoch of the last refresh; null before the first
   at: number | null
   // why a source could not be read (gh missing, ...)

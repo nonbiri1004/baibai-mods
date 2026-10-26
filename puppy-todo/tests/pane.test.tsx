@@ -1,7 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Item, View } from '../types'
-import { attentionFile, occurrence, target } from '../hooks/todo'
 
 const PANE = {
   plugin: 'puppy-todo',
@@ -12,88 +11,82 @@ const PANE = {
     isFocused: false,
     bodyColumns: 80,
     placement: 'dock',
-    scroll: { offset: 0, bodyRows: 40 },
+    scroll: { offset: 0, bodyRows: 60 },
     view: {},
   },
 } as const
 
+const NOW = Date.parse('2026-10-25T10:00:00Z')
 const item = (over: Partial<Item>): Item => ({ id: 'a', text: 'a', project: 'p', kind: 'todo', status: 'open', createdAt: '', ...over })
-const skippedItem = item({ id: 'old', text: 'an old thing', project: 'q' })
 const prItem = item({
   id: 'pr',
   text: 'merge the notes PR',
   schemaVersion: 2,
   source: { type: 'github-pr', host: 'github.com', repo: 'you/app', number: 8 },
   completion: { mode: 'source', condition: 'merged' },
-  status: 'done',
 })
 
 const VIEW: View = {
-  here: { id: 's2', title: 'notes', project: 'app', cwd: '/x' },
-  talks: [{ id: 't', title: 'games', project: 'g', cwd: '/g', ask: 'make the office?', askId: 'toolu_1', prs: [], mtimeMs: 0 }],
-  prs: [],
-  items: [item({ id: 'mine', text: 'call the vet', session: { id: 's1', title: 'notes', cwd: '/x' } }), prItem, skippedItem],
+  here: { id: 's2', title: 'notes', project: 'app', cwd: '/x', recap: 'built the list' },
+  talks: [{ id: 't', title: 'games', titles: ['games'], project: 'g', cwd: '/g', ask: 'make the office?', askId: 'toolu_1', prs: [], mtimeMs: NOW - 3_600_000 }],
+  items: [
+    item({ id: 'mine', text: 'call the vet', session: { id: 's1', title: 'notes', cwd: '/x' } }),
+    prItem,
+    item({ id: 'gone', text: 'an old idea', deletedAt: '2026-10-25T09:00:00Z' }),
+    item({ id: 'did', text: 'buy food', status: 'done', doneAt: '2026-10-25T09:00:00Z' }),
+  ],
   prStates: { 'github.com/you/app#8': { state: 'OPEN' } },
-  attention: {
-    [target.item(skippedItem)]: {
-      version: 1,
-      target: target.item(skippedItem),
-      state: 'dismissed',
-      occurrence: occurrence.item(skippedItem),
-      at: '',
-      by: 'person',
+  convos: [
+    {
+      session: { id: 'local_a', title: 'shelf listing', cwd: '/x', isArchived: false, isPinned: true, lastActivityMs: 0 },
+      recap: 'listed it',
+      verdict: { state: 'clear', reasons: [] },
     },
-  },
-  isShowingSkipped: false,
-  at: Date.parse('2026-10-25T10:00:00Z'),
+    {
+      session: { id: 'local_b', title: 'games', cwd: '/g', isArchived: false, isPinned: true, lastActivityMs: 0 },
+      verdict: { state: 'open', reasons: ['asked you: make the office?'] },
+    },
+  ],
+  isShowingDone: false,
+  isShowingConvos: false,
+  at: NOW,
   notes: [],
 }
 
-test('the pane has skip, never a done button, on every surface', async ($, on) => {
-  // the engine beneath answers the pane's read of its state with a filled view
+test('the pane: tick and ✕ on to-dos, no buttons on PR rows, done and tidy-up folded', async ($, on) => {
   // a call on $ is answered { value }: here the state read's own { value, version }
   on('state.get', () => ({ value: { value: VIEW, version: 1 } }))
-  expect(attentionFile(target.item(skippedItem))).toMatch(/\.json$/)
 
   for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    // the face counts the skipped row instead of saying all clear
-    expect((await ui.find({ type: 'Text', text: /waiting on you · 1 skipped/ }))?.text).toBeTruthy()
-    // an item from an earlier session of this conversation shows under this conversation
-    expect((await ui.find({ type: 'Text', text: /call the vet/ }))?.text).toBeTruthy()
-    // the PR item is open although its file says done: github said open
-    expect((await ui.find({ type: 'Text', text: /merge the notes PR · done when the PR merges/ }))?.text).toBeTruthy()
-    // the skipped row is hidden, behind the skipped button
-    expect(await ui.find({ type: 'Text', text: /an old thing/ })).toBeFalsy()
-    expect(await ui.find({ type: 'Button', key: 'show-skipped' })).toBeTruthy()
-    expect(await ui.find({ type: 'Button', key: `skip-${target.item(prItem)}` })).toBeTruthy()
-    // no tick anywhere
-    expect((await ui.findAll({ type: 'Button' })).map(b => b.text)).not.toContain('○')
+    expect((await ui.find({ type: 'Text', text: /2 to-do · 1 asked you/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /last: built the list/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /make the office\?/ }))?.text).toBeTruthy()
+    // an item from an earlier session of this conversation is here, with a tick and a ✕
+    expect(await ui.find({ type: 'Button', key: 'tick-mine' })).toBeTruthy()
+    expect(await ui.find({ type: 'Button', key: 'del-mine' })).toBeTruthy()
+    // the PR row waits for github: no tick, no ✕
+    expect((await ui.find({ type: 'Text', text: /merge the notes PR · waiting for merge/ }))?.text).toBeTruthy()
+    expect(await ui.find({ type: 'Button', key: 'tick-pr' })).toBeFalsy()
+    expect(await ui.find({ type: 'Button', key: 'del-pr' })).toBeFalsy()
+    // deleted never shows; done and tidy-up are folded
+    expect(await ui.find({ type: 'Text', text: /an old idea/ })).toBeFalsy()
+    expect(await ui.find({ type: 'Text', text: /buy food/ })).toBeFalsy()
+    expect((await ui.find({ type: 'Button', key: 'show-done' }))?.text).toContain('done 1')
+    expect((await ui.find({ type: 'Button', key: 'show-convos' }))?.text).toContain('1 of 2 conversations have nothing open')
+    // nothing in the pane archives or skips
+    const labels = (await ui.findAll({ type: 'Button' })).map(b => b.text)
+    expect(labels.some(l => /archive|skip/.test(l))).toBe(false)
     await ui.unmount()
   }
 })
 
-test('Codex #3: a skipped PR item that merged shows as done, and is not counted as skipped', async ($, on) => {
-  const merged: View = {
-    ...VIEW,
-    talks: [],
-    items: [prItem],
-    prStates: { 'github.com/you/app#8': { state: 'MERGED', endedAt: '2026-10-25T09:00:00Z' } },
-    attention: {
-      [target.item(prItem)]: {
-        version: 1,
-        target: target.item(prItem),
-        state: 'dismissed',
-        occurrence: occurrence.item(prItem),
-        at: '',
-        by: 'person',
-      },
-    },
-  }
-  on('state.get', () => ({ value: { value: merged, version: 1 } }))
-  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
-  expect((await ui.find({ type: 'Text', text: /all clear/ }))?.text).toBeTruthy()
-  expect((await ui.find({ type: 'Text', text: /merge the notes PR · merged/ }))?.text).toBeTruthy()
-  expect(await ui.find({ type: 'Button', key: 'show-skipped' })).toBeFalsy()
+test('unfolded: done items can be unticked, tidy-up lists facts and recaps without buttons', async ($, on) => {
+  on('state.get', () => ({ value: { value: { ...VIEW, isShowingDone: true, isShowingConvos: true }, version: 1 } }))
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect(await ui.find({ type: 'Button', key: 'untick-did' })).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /nothing open found is a hint/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /last: listed it/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /asked you: make the office\?/ }))?.text).toBeTruthy()
   await ui.unmount()
 })
