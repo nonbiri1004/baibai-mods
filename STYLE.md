@@ -22,7 +22,8 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
 - Give each card a `key` that starts with `card-`, so tests can find it.
 - Lists inside a card get a dim label above each group, not another border. One border level only.
 - Extra lists (done items, old things) stay folded below the cards: a dim button `▸ done 3`, `▾` when open.
-- Text inside a card has 4 fewer columns than the pane (border and padding). Clip to that width.
+- Long text: on the terminal, clip by columns (a card has 4 fewer than the pane: border and padding). On the desktop, give the `Text` `wrap="truncate-end"` and let it cut at the edge; counting columns there cuts too early, most of all for Chinese.
+- Rows with a mark in front (☐, ↗, ✓): put the mark in a `<Box width={3}>`, so the words line up.
 
 ## Colors
 

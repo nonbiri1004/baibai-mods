@@ -610,12 +610,15 @@ export const register: Register = on => {
 
     // inside a card: the border and padding take 4 columns (STYLE.md)
     const inner = width - 4
+    // the terminal cuts by columns; a graphical surface measures the words and cuts at the edge itself
+    const isGraphical = e.surface !== 'terminal'
+    const fit = (text: string, max: number) => clip(text, isGraphical ? 300 : max)
     // a card: a rounded dim border, the name on the left, quiet facts on the right
     const card = (key: string, name: string, right: RenderChildren, body: RenderChildren) => (
       <Box key={`card-${key}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap="xs">
         <Box flexDirection="row" justifyContent="space-between" gap={1}>
           <Box flexShrink={1}>
-            <Text weight="semibold">{name}</Text>
+            <Text weight="semibold" wrap="truncate-end">{name}</Text>
           </Box>
           <Text dimColor>{right}</Text>
         </Box>
@@ -632,13 +635,14 @@ export const register: Register = on => {
 
       return (
         <Box key={`i-${i.id}`} flexDirection="row" gap={1} alignItems="center" hover={{ scope }}>
-          {isPr ? <Text dimColor> ↗ </Text> : <Button key={`tick-${i.id}`} label="☐" plain onPress={() => press($, i.id, 'done')} />}
-          <Box flexGrow={1} flexShrink={1}>
-            <Text>
-              {clip(i.text, inner - 10)}
-              {isPr ? <Text dimColor> · {o.state === 'unknown' ? 'not checked yet' : 'waiting for merge'}</Text> : null}
-            </Text>
+          {/* one width for the tick and the arrow, so the words line up */}
+          <Box width={3} justifyContent="center">
+            {isPr ? <Text dimColor>↗</Text> : <Button key={`tick-${i.id}`} label="☐" plain onPress={() => press($, i.id, 'done')} />}
           </Box>
+          <Box flexGrow={1} flexShrink={1}>
+            <Text wrap="truncate-end">{fit(i.text, inner - 10)}</Text>
+          </Box>
+          {isPr ? <Text dimColor>{o.state === 'unknown' ? 'not checked yet' : 'waiting for merge'}</Text> : null}
           {i.link?.startsWith('https://') ? <Link href={i.link} label="link" /> : null}
           {isPr ? null : (
             <Box {...(hasPointer ? { display: 'none', hover: { scope, display: 'flex' } } : {})}>
@@ -670,9 +674,9 @@ export const register: Register = on => {
 
         {card(
           'here',
-          clip(v.here.title || 'this conversation', inner - v.here.project.length - 4),
+          fit(v.here.title || 'this conversation', inner - v.here.project.length - 4),
           v.here.project,
-          v.here.recap ? <Text dimColor>last: {clip(v.here.recap, inner - 6)}</Text> : null,
+          v.here.recap ? <Text dimColor wrap="truncate-end">last: {fit(v.here.recap, inner - 6)}</Text> : null,
         )}
 
         {asks.length > 0 &&
@@ -683,11 +687,11 @@ export const register: Register = on => {
             <Box flexDirection="column">
               {asks.slice(0, ASKS_SHOWN).map(t => (
                 <Box key={`ask-${t.id}`} flexDirection="column">
-                  <Text>
-                    {clip(t.title, inner - 16)}
+                  <Text wrap="truncate-end">
+                    {fit(t.title, inner - 16)}
                     <Text dimColor> · {ago(now, t.mtimeMs)}</Text>
                   </Text>
-                  <Text dimColor>  {clip(t.ask ?? '', inner - 2)}</Text>
+                  <Text dimColor wrap="truncate-end">  {fit(t.ask ?? '', inner - 2)}</Text>
                 </Box>
               ))}
               {asks.length > ASKS_SHOWN ? <Text dimColor>and {asks.length - ASKS_SHOWN} more</Text> : null}
@@ -734,7 +738,7 @@ export const register: Register = on => {
                       <Button key={`untick-${i.id}`} label="☑" dimColor onPress={() => press($, i.id, 'open')} />
                     )}
                     <Text dimColor strikethrough>
-                      {clip(i.text, width - 8)}
+                      {fit(i.text, width - 8)}
                     </Text>
                   </Box>
                 ))
@@ -756,7 +760,7 @@ export const register: Register = on => {
                 {sortConvos(v.convos).map(c => (
                   <Box key={`c-${c.session.id}`} flexDirection="column">
                     <Text dimColor={c.verdict.state !== 'clear'}>
-                      {{ clear: '✓', open: '●', unknown: '?' }[c.verdict.state]} {clip(c.session.title, width - 24)}
+                      {{ clear: '✓', open: '●', unknown: '?' }[c.verdict.state]} {fit(c.session.title, width - 24)}
                       <Text dimColor>
                         {' '}
                         · {ago(now, c.session.lastActivityMs)}
@@ -765,9 +769,9 @@ export const register: Register = on => {
                     </Text>
                     <Text dimColor>
                       {'  '}
-                      {clip(c.verdict.reasons.length > 0 ? c.verdict.reasons.join(' · ') : 'nothing open found', width * 2)}
+                      {fit(c.verdict.reasons.length > 0 ? c.verdict.reasons.join(' · ') : 'nothing open found', width * 2)}
                     </Text>
-                    {c.recap ? <Text dimColor>  last: {clip(c.recap, width * 2)}</Text> : null}
+                    {c.recap ? <Text dimColor>  last: {fit(c.recap, width * 2)}</Text> : null}
                   </Box>
                 ))}
               </Box>

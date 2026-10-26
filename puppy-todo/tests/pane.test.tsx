@@ -71,7 +71,7 @@ test('the pane: tick and ✕ on to-dos, no buttons on PR rows, done and tidy-up 
     expect(await ui.find({ type: 'Button', key: 'tick-mine' })).toBeTruthy()
     expect(await ui.find({ type: 'Button', key: 'del-mine' })).toBeTruthy()
     // the PR row waits for github: no tick, no ✕
-    expect((await ui.find({ type: 'Text', text: /merge the notes PR · waiting for merge/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /^waiting for merge$/ }))?.text).toBeTruthy()
     expect(await ui.find({ type: 'Button', key: 'tick-pr' })).toBeFalsy()
     expect(await ui.find({ type: 'Button', key: 'del-pr' })).toBeFalsy()
     // deleted never shows; done and tidy-up are folded
