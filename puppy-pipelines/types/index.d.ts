@@ -23,7 +23,7 @@ export type Status = {
   detail?: { [key: string]: Json } | null
 }
 
-// detail of pipeline "music" (lofi-puppy tools/status_export.py)
+// detail of pipeline "music" (baibai-music tools/status_export.py)
 export type MusicBatch = {
   name: string
   strip?: string
@@ -43,7 +43,7 @@ export type MusicDetail = {
   batches?: MusicBatch[]
 }
 
-// detail of pipeline "ai-video" (video-pipeline)
+// detail of pipeline "ai-video" (ai-video-pipeline)
 export type Stage = 'plan' | 'clips' | 'voice' | 'compose' | 'final' | 'done'
 export type VideoJob = { job: string; stage: Stage; spend_usd: number; cap_usd: number; updated?: string; next?: string }
 export type VideoDetail = { spend_usd?: number; cap_usd?: number; jobs?: VideoJob[] }
