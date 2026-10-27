@@ -250,3 +250,19 @@ test('todo_add finds the same thing said again in the same project', () => {
   expect(similarOpen(list, s, { project: 'web', text: 'write the retry docs' })).toBe(null)
   expect(similarOpen(list, s, { project: 'app', text: 'call the vet' })).toBe(null)
 })
+
+test('Codex #2: two PRs with the same words are two items', () => {
+  const pr9 = { ...PR, number: 9 }
+  const list = [prItem({ id: 'p8', project: 'app', text: 'merge the PR' })]
+  const s = states({ state: 'OPEN' })
+  expect(similarOpen(list, s, { project: 'app', text: 'merge the PR', source: pr9 })).toBe(null)
+  // a plain item and a PR item with the same words: like, not the same
+  expect(similarOpen(list, s, { project: 'app', text: 'merge the PR' })?.kind).toBe('like')
+})
+
+test('Codex #3: symbols that change the meaning keep two items apart', () => {
+  const list = [item({ id: 'cpp', project: 'app', text: '更新 C++ 範例' })]
+  expect(similarOpen(list, {}, { project: 'app', text: '更新 C# 範例' })?.kind).not.toBe('same')
+  // only case, spaces and an end mark don't count
+  expect(similarOpen(list, {}, { project: 'app', text: '更新 c++  範例。' })?.kind).toBe('same')
+})

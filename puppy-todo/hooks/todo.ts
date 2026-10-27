@@ -429,10 +429,15 @@ function words(text: string): string[] {
     .filter(w => w !== '')
 }
 
+// the same words: only case, spaces and an end mark don't count. symbols stay (C++ is not C#)
+function sameWords(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, ' ').trim().replace(/[。．.!！?？]+$/u, '')
+}
+
 // an open item of the same project that says the same thing: 'same' when the words match
 // (or it is the same PR), 'like' when most words are shared. todo_add uses it so the list
 // doesn't fill up with three ways of saying one thing. Chinese has no spaces, so a long
-// shared start counts too
+// shared start counts too. two different PRs are never alike, whatever they say
 export function similarOpen(
   items: readonly Item[],
   prStates: Readonly<Record<string, PrState>>,
@@ -445,13 +450,21 @@ export function similarOpen(
       continue
     }
     const src = sourceOf(i)
-    if (draft.source && src && prKey(src) === prKey(draft.source)) {
-      return { kind: 'same', item: i }
+    if (draft.source && src) {
+      if (prKey(src) === prKey(draft.source)) {
+        return { kind: 'same', item: i }
+      }
+      continue
+    }
+    if (sameWords(i.text) === sameWords(draft.text)) {
+      // a plain item and a PR item can say the same words and still be two things
+      if (!draft.source && !src) {
+        return { kind: 'same', item: i }
+      }
+      like ??= i
+      continue
     }
     const theirs = words(i.text)
-    if (theirs.join(' ') === mine.join(' ')) {
-      return { kind: 'same', item: i }
-    }
     const a = new Set(mine)
     const b = new Set(theirs)
     const shared = [...a].filter(w => b.has(w)).length
