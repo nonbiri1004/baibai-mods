@@ -115,6 +115,12 @@ export type View = {
   // the two folded rows at the bottom
   isShowingDone: boolean
   isShowingConvos: boolean
+  // folds in the pane: every question, the project's other conversations, which other projects are open
+  isShowingAllAsks: boolean
+  isShowingInProject: boolean
+  openProjects: string[]
+  // the row whose ⋯ was pressed: its whole text, where it came from, delete
+  openItem: string | null
   // ms since the epoch of the last refresh; null before the first
   at: number | null
   // why a source could not be read (gh missing, ...)

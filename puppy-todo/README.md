@@ -3,42 +3,39 @@
 a to-do pane beside the chat, shared by every conversation. when you come back to a conversation it tells you what this one was doing, what other conversations asked you, and what is left.
 
 ```
-•ᴥ• 3 to-do · 1 asked you                 refresh
-↗ 1 waiting for merge · ○ 2 open
-▪ 1 item older than 7 days
-╭─────────────────────────────────────────────╮
-│ notes app                            my-app │
-│ last: the list works; offline sync is next. │
-╰─────────────────────────────────────────────╯
+•ᴥ• 9 to-do · 1 asked you                 refresh
 ╭─────────────────────────────────────────────╮
 │ asked you                         1 waiting │
 │ games chat · 3h                             │
 │   make the office prototype first?          │
 ╰─────────────────────────────────────────────╯
 ╭─────────────────────────────────────────────╮
-│ to-do                                3 open │
+│ my-app                                    3 │
+│ last: the list works; offline sync is next. │
 │ [add a to-do…]                              │
 │                                             │
 │ this conversation                           │
-│ ▎ ○ test offline sync                    2h │
+│  ○  test offline sync                  2h ⋯ │
+│  ↗  merge the notes PR             #78 1d ⋯ │
+│ ▸ other conversations                     1 │
 ╰─────────────────────────────────────────────╯
 ╭─────────────────────────────────────────────╮
-│ my-app                                    2 │
-│ ▎ ○ write the retry docs              ▪ 9d  │
-│ ▎ ↗ merge the notes PR  waiting for merge … │
+│ other projects                            6 │
+│ ▸ games                                   2 │
+│ ▸ website                                 4 │
 ╰─────────────────────────────────────────────╯
 ▸ done 8
 ▸ tidy up: 32 of 80 conversations have nothing open
 looked at 14:05
 ```
 
-it looks like the other puppy mods: one card per part ([style](../STYLE.md)).
+it looks like the other puppy mods: one card per part ([style](../STYLE.md)). it shows little at first and opens on a press:
 
-how to read it:
-
-- the line under the puppy counts what waits: `↗` PRs waiting for merge, `○` open to-dos. when items are older than 7 days, a line under it says how many.
-- each project is its own card, with a grey bar down the left and the count on the right. greys only, like lofipuppy.app: no color per project.
-- on the right of a row: how old it is (`2h`, `9d`). after 7 days the age turns bold with a small mark (an hourglass on the desktop, `▪` in the terminal). the age comes from `createdAt`, or from the time at the start of the id.
+- **asked you** comes first, and only when another conversation is waiting for your answer. the first three show; `▸ more` shows the rest.
+- **this project** is open: its last recap, the add field, this conversation's to-dos, then `▸ other conversations` of the same project.
+- **other projects** are one line each with a count. press a name to see its to-dos.
+- a row is `○` (tick it) or `↗` (a PR: GitHub ticks it), the words, a short link (`#78`) and how old it is. `⋯` shows the whole text, which conversation wrote it, and `delete`.
+- done items and the conversation list stay folded at the bottom.
 
 it opens by itself when a session starts. `/todo` opens it again; `/todo <text>` adds a to-do for this conversation.
 
@@ -46,7 +43,8 @@ it opens by itself when a session starts. `/todo` opens it again; `/todo <text>`
 
 - **add**: the field at the top of the list, or `/todo <text>`.
 - **tick** ○ when it's done. tick ☑ under `done` to open it again.
-- **✕** to delete something you won't do. on the desktop it shows when the pointer is on the row.
+- **⋯** on a row: the whole text, where it came from, and `delete` for something you won't do. on the desktop `⋯` shows when the pointer is on the row.
+- **▸** opens a fold: more questions, the project's other conversations, another project, done, tidy up.
 - **tidy up**: when the sidebar gets long, unfold the last row. it lists every open conversation with what is still open in it and its last recap, so you can archive from the sidebar without opening each one.
 
 that's all. everything else happens by itself.
@@ -56,6 +54,7 @@ that's all. everything else happens by itself.
 - **asked you**: the last question another conversation asked in its wrap-up box, while you haven't typed anything after it. questions fade after two days.
 - **PR items** (↗) have no tick: they turn done when GitHub says the PR merged, and show ✕ under `done` if it closed without merging.
 - **claude keeps the list**: with the mod installed, claude has `todo_add`, `todo_done` and `todo_list`, and a line in your `CLAUDE.md` asks it to add what is left at the end of a conversation and tick what it finished.
+- **one thing, one item**: `todo_add` refuses the same words (or the same PR) already open in that project, and says so when a new item looks a lot like an open one.
 - **this conversation first**: the to-dos written here, by this session or an earlier one of the same conversation, come before the rest.
 
 ## the shared list

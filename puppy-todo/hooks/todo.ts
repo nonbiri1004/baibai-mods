@@ -392,9 +392,6 @@ export function ago(now: number, ms: number): string {
   return hours < 48 ? `${hours}h` : `${Math.round(hours / 24)}d`
 }
 
-// an open item older than this gets its age in color, and counts in the warning at the top
-export const STALE_DAYS = 7
-
 // when an item was written: createdAt, else the time in its id (20261024-1432-…, local time); NaN when neither tells
 export function bornAt(item: Item): number {
   const at = Date.parse(item.createdAt)
@@ -410,13 +407,6 @@ export function bornAt(item: Item): number {
   return new Date(y, mo - 1, d, hh, mm).getTime()
 }
 
-// by whole days as the pane shows them (ago rounds), so every "8d" is old and no "7d" is
-export function isStale(item: Item, now: number): boolean {
-  const at = bornAt(item)
-
-  return !Number.isNaN(at) && Math.round((now - at) / DAY) > STALE_DAYS
-}
-
 // a link in few columns, for the terminal: github/owner/repo/pull/16 → #16, else the host
 export function shortLink(url: string): string {
   const gh = /^https:\/\/github\.com\/[^/]+\/[^/]+\/(?:pull|issues)\/(\d+)/.exec(url)
@@ -428,4 +418,53 @@ export function shortLink(url: string): string {
   } catch {
     return 'link'
   }
+}
+
+// words only, for comparing two to-dos: lowercase, no punctuation, single spaces
+function words(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .split(/\s+/)
+    .filter(w => w !== '')
+}
+
+// an open item of the same project that says the same thing: 'same' when the words match
+// (or it is the same PR), 'like' when most words are shared. todo_add uses it so the list
+// doesn't fill up with three ways of saying one thing. Chinese has no spaces, so a long
+// shared start counts too
+export function similarOpen(
+  items: readonly Item[],
+  prStates: Readonly<Record<string, PrState>>,
+  draft: { project: string; text: string; source?: PrSource },
+): { kind: 'same' | 'like'; item: Item } | null {
+  const mine = words(draft.text)
+  let like: Item | null = null
+  for (const i of items) {
+    if (i.project !== draft.project || !isOpenItem(i, prStates)) {
+      continue
+    }
+    const src = sourceOf(i)
+    if (draft.source && src && prKey(src) === prKey(draft.source)) {
+      return { kind: 'same', item: i }
+    }
+    const theirs = words(i.text)
+    if (theirs.join(' ') === mine.join(' ')) {
+      return { kind: 'same', item: i }
+    }
+    const a = new Set(mine)
+    const b = new Set(theirs)
+    const shared = [...a].filter(w => b.has(w)).length
+    const flatA = mine.join('')
+    const flatB = theirs.join('')
+    let prefix = 0
+    while (prefix < flatA.length && flatA[prefix] === flatB[prefix]) {
+      prefix++
+    }
+    if ((a.size > 0 && shared / Math.max(a.size, b.size) >= 0.7) || prefix >= 16) {
+      like ??= i
+    }
+  }
+
+  return like ? { kind: 'like', item: like } : null
 }

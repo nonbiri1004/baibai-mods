@@ -24,6 +24,7 @@ const prItem = item({
   schemaVersion: 2,
   source: { type: 'github-pr', host: 'github.com', repo: 'you/app', number: 8 },
   completion: { mode: 'source', condition: 'merged' },
+  link: 'https://github.com/you/app/pull/8',
 })
 
 const VIEW: View = {
@@ -32,6 +33,8 @@ const VIEW: View = {
   items: [
     item({ id: 'mine', text: 'call the vet', createdAt: '2026-10-15T10:00:00Z', session: { id: 's1', title: 'notes', cwd: '/x' } }),
     item({ id: 'new', text: 'water the plants', project: 'home', createdAt: '2026-10-25T08:00:00Z' }),
+    // the same project as this conversation, written by another one
+    item({ id: 'sib', text: 'write the docs', project: 'app', session: { id: 's9', title: 'docs', cwd: '/y' } }),
     prItem,
     item({ id: 'gone', text: 'an old idea', deletedAt: '2026-10-25T09:00:00Z' }),
     item({ id: 'did', text: 'buy food', status: 'done', doneAt: '2026-10-25T09:00:00Z' }),
@@ -50,48 +53,42 @@ const VIEW: View = {
   ],
   isShowingDone: false,
   isShowingConvos: false,
+  isShowingAllAsks: false,
+  isShowingInProject: false,
+  openProjects: [],
+  openItem: null,
   convosAt: NOW - 60_000,
   at: NOW,
   notes: [],
 }
 
-test('the pane: tick and ✕ on to-dos, no buttons on PR rows, done and tidy-up folded', async ($, on) => {
+test('the pane: asks first, this project open, other projects one line each, the rest folded', async ($, on) => {
   // a call on $ is answered { value }: here the state read's own { value, version }
   on('state.get', () => ({ value: { value: VIEW, version: 1 } }))
 
   for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
     const ui = await $.ui.mount({ ...PANE, surface })
-    expect((await ui.find({ type: 'Text', text: /3 to-do · 1 asked you/ }))?.text).toBeTruthy()
-    // each part is a card (STYLE.md); refresh sits on the first row
-    for (const key of ['card-here', 'card-asks', 'card-todo']) expect(await ui.find({ type: 'Box', key })).toBeTruthy()
-    expect((await ui.find({ type: 'Text', text: /1 waiting/ }))?.text).toBeTruthy()
-    expect((await ui.find({ type: 'Text', text: /3 open/ }))?.text).toBeTruthy()
-    // the summary under the first row: what waits for merge, what is open, what is old
-    expect(await ui.find({ type: 'Box', key: 'summary' })).toBeTruthy()
-    expect((await ui.find({ type: 'Text', text: /↗ 1 waiting for merge/ }))?.text).toBeTruthy()
-    expect((await ui.find({ type: 'Text', text: /○ 2 open/ }))?.text).toBeTruthy()
-    expect((await ui.find({ type: 'Text', text: /^1 item older than 7 days$/ }))?.text).toBeTruthy()
-    // each project is its own card with a grey bar; an open to-do ticks with ○ and shows its age
-    expect(await ui.find({ type: 'Box', key: 'card-p-home' })).toBeTruthy()
-    expect(await ui.find({ type: 'Box', key: 'bar-p-home-new' })).toBeTruthy()
-    // the row beside the bar can get narrower than its words, so long words cut instead of pushing the age out
-    expect((await ui.find({ type: 'Box', key: 'i-new' }))?.props).toMatchObject({ flexGrow: 1, flexShrink: 1, minWidth: 0 })
-    // an old item gets a mark beside its age
-    expect(await ui.find({ type: 'Box', key: 'old-mine' })).toBeTruthy()
-    expect(await ui.find({ type: 'Box', key: 'old-new' })).toBeFalsy()
-    expect((await ui.find({ type: 'Button', key: 'tick-new' }))?.text).toBe('○')
-    expect((await ui.find({ type: 'Text', text: /^2h$/ }))?.text).toBeTruthy()
-    expect((await ui.find({ type: 'Text', text: /^10d$/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Text', text: /4 to-do · 1 asked you/ }))?.text).toBeTruthy()
     expect(await ui.find({ type: 'Button', key: 'refresh' })).toBeTruthy()
-    expect((await ui.find({ type: 'Text', text: /last: built the list/ }))?.text).toBeTruthy()
+    // each part is a card (STYLE.md); no summary line, no card per project
+    for (const key of ['card-asks', 'card-here', 'card-projects']) expect(await ui.find({ type: 'Box', key })).toBeTruthy()
+    for (const key of ['summary', 'card-todo', 'card-p-home']) expect(await ui.find({ type: 'Box', key })).toBeFalsy()
+    expect((await ui.find({ type: 'Text', text: /1 waiting/ }))?.text).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /make the office\?/ }))?.text).toBeTruthy()
-    // an item from an earlier session of this conversation is here, with a tick and a ✕
-    expect(await ui.find({ type: 'Button', key: 'tick-mine' })).toBeTruthy()
-    expect(await ui.find({ type: 'Button', key: 'del-mine' })).toBeTruthy()
-    // the PR row waits for github: no tick, no ✕
-    expect((await ui.find({ type: 'Text', text: /^waiting for merge$/ }))?.text).toBeTruthy()
-    expect(await ui.find({ type: 'Button', key: 'tick-pr' })).toBeFalsy()
-    expect(await ui.find({ type: 'Button', key: 'del-pr' })).toBeFalsy()
+    // this project: its last recap, then this conversation's items with a tick and a ⋯, no ✕ until asked
+    expect((await ui.find({ type: 'Text', text: /last: built the list/ }))?.text).toBeTruthy()
+    expect((await ui.find({ type: 'Button', key: 'tick-mine' }))?.text).toBe('○')
+    expect(await ui.find({ type: 'Button', key: 'more-mine' })).toBeTruthy()
+    expect(await ui.find({ type: 'Button', key: 'del-mine' })).toBeFalsy()
+    // the project's other conversations are folded
+    expect((await ui.find({ type: 'Button', key: 'show-in-project' }))?.text).toContain('other conversations')
+    expect(await ui.find({ type: 'Button', key: 'tick-sib' })).toBeFalsy()
+    // every other project is one folded line with its count
+    expect((await ui.find({ type: 'Button', key: 'show-p-home' }))?.text).toContain('home')
+    expect(await ui.find({ type: 'Button', key: 'show-p-p' })).toBeTruthy()
+    expect(await ui.find({ type: 'Button', key: 'tick-new' })).toBeFalsy()
+    // no old-item warning, no "waiting for merge" words: ↗ says it
+    expect(await ui.find({ type: 'Text', text: /older than|waiting for merge/ })).toBeFalsy()
     // deleted never shows; done and tidy-up are folded
     expect(await ui.find({ type: 'Text', text: /an old idea/ })).toBeFalsy()
     expect(await ui.find({ type: 'Text', text: /buy food/ })).toBeFalsy()
@@ -102,6 +99,38 @@ test('the pane: tick and ✕ on to-dos, no buttons on PR rows, done and tidy-up 
     expect(labels.some(l => /archive|skip/.test(l))).toBe(false)
     await ui.unmount()
   }
+})
+
+test('opened: other projects show their rows, a PR row has no tick, ⋯ shows the whole item and delete', async ($, on) => {
+  const opened: View = { ...VIEW, isShowingInProject: true, openProjects: ['home', 'p'], openItem: 'mine' }
+  on('state.get', () => ({ value: { value: opened, version: 1 } }))
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Button', key: 'tick-sib' })).toBeTruthy()
+  expect((await ui.find({ type: 'Button', key: 'tick-new' }))?.text).toBe('○')
+  expect((await ui.find({ type: 'Text', text: /^2h$/ }))?.text).toBeTruthy()
+  // the row may get narrower than its words, so long words cut instead of pushing the age out
+  expect((await ui.find({ type: 'Box', key: 'r-new' }))?.props).toMatchObject({ flexGrow: 1, flexShrink: 1, minWidth: 0 })
+  // the PR row waits for github: no tick, no delete, a short link
+  expect(await ui.find({ type: 'Button', key: 'tick-pr' })).toBeFalsy()
+  expect((await ui.find({ type: 'Text', text: /^#8$/ }))?.text).toBeTruthy()
+  // ⋯ on "call the vet": where it came from, when, and delete
+  expect((await ui.find({ type: 'Text', text: /from notes · added 2026-10-15/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Button', key: 'del-mine' }))?.text).toBe('delete')
+  await ui.unmount()
+})
+
+test('more than three questions: the rest behind a fold', async ($, on) => {
+  const talk = (n: number) => ({ ...VIEW.talks[0]!, id: `t${n}`, title: `chat ${n}`, titles: [`chat ${n}`], mtimeMs: NOW - n * 60_000 })
+  let isShowingAllAsks = false
+  on('state.get', () => ({ value: { value: { ...VIEW, talks: [1, 2, 3, 4].map(talk), isShowingAllAsks }, version: 1 } }))
+  let ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Button', key: 'more-asks' }))?.text).toBe('▸ more')
+  expect(await ui.find({ type: 'Text', text: /chat 4/ })).toBeFalsy()
+  await ui.unmount()
+  isShowingAllAsks = true
+  ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /chat 4/ }))?.text).toBeTruthy()
+  await ui.unmount()
 })
 
 test('folded tidy up shows no count it hasn\'t worked out lately', async ($, on) => {

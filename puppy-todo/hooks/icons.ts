@@ -20,36 +20,19 @@ const ICONS = {
     '..o...........',
     '..............',
   ],
-  // an item that waited too long: an hourglass, the sand at the bottom
-  old: [
-    '..............',
-    '...oooooooo...',
-    '....o....o....',
-    '....o....o....',
-    '.....o..o.....',
-    '......oo......',
-    '......oo......',
-    '.....o..o.....',
-    '....o.ss.o....',
-    '....ossssoo...',
-    '...oooooooo...',
-    '..............',
-    '..............',
-    '..............',
-  ],
 } as const
 
 export type IconName = keyof typeof ICONS
 
 // the text marks the terminal shows in their place
-export const MARKS: Record<IconName, string> = { pr: '↗', old: '▪' }
+export const MARKS: Record<IconName, string> = { pr: '↗' }
 
 // the warm greys of lofipuppy.app and puppy notes (baibai-brand 品牌風格.md, 網站): muted for the
-// lines, text for the sand, so the icon stays quiet next to the words
+// lines, so the icon stays quiet next to the words
 const STYLE =
   '<style>svg{--text:#2a2926;--muted:#6a6761}' +
   '@media (prefers-color-scheme: dark){svg{--text:#e7e5e0;--muted:#9b9891}}</style>'
-const FILL: Record<string, string> = { o: 'var(--muted)', s: 'var(--text)' }
+const FILL: Record<string, string> = { o: 'var(--muted)' }
 
 export function iconSvg(name: IconName): string {
   const rects = ICONS[name].flatMap((row, y) =>

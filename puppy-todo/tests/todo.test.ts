@@ -9,7 +9,6 @@ import {
   deleteItem,
   isHere,
   isOpenItem,
-  isStale,
   mood,
   newId,
   newestTalks,
@@ -26,6 +25,7 @@ import {
   saying,
   shortLink,
   shown,
+  similarOpen,
 } from '../hooks/todo'
 
 const NOW = Date.parse('2026-10-24T14:30:00Z')
@@ -217,19 +217,36 @@ test('Codex #4: a transcript that could not be read is no transcript, not an emp
   expect(fine?.title).toBe('t')
 })
 
-test('an item is old after 7 days, by createdAt or else by the time in its id', () => {
+test('an item\'s age comes from createdAt, or else the time in its id', () => {
   expect(bornAt(item({ createdAt: '2026-10-20T00:00:00Z' }))).toBe(Date.parse('2026-10-20T00:00:00Z'))
   // the id is local time, like newId writes it
   expect(bornAt(item({ id: '20261020-0930-k3f9' }))).toBe(new Date(2026, 9, 20, 9, 30).getTime())
   expect(Number.isNaN(bornAt(item({ id: 'hand-written' })))).toBe(true)
-  expect(isStale(item({ createdAt: '2026-10-16T14:00:00Z' }), NOW)).toBe(true)
-  expect(isStale(item({ createdAt: '2026-10-18T14:00:00Z' }), NOW)).toBe(false)
-  // no time known: not called old
-  expect(isStale(item({ id: 'hand-written' }), NOW)).toBe(false)
 })
 
 test('a link gets short for the terminal', () => {
   expect(shortLink('https://github.com/you/app/pull/16')).toBe('#16')
   expect(shortLink('https://github.com/you/app/issues/3#top')).toBe('#3')
   expect(shortLink('https://docs.example.com/a/b')).toBe('docs.example.com')
+})
+
+test('todo_add finds the same thing said again in the same project', () => {
+  const list = [
+    item({ id: 'a', project: 'app', text: 'Write the retry docs.' }),
+    item({ id: 'b', project: 'app', text: '在 codex-review.md 評估表補上 10/26 的三列紀錄' }),
+    prItem({ id: 'c', project: 'app', text: 'merge it' }),
+    item({ id: 'd', project: 'app', text: 'write the retry docs', status: 'done', doneAt: '2026-10-24T00:00:00Z' }),
+  ]
+  const s = states({ state: 'OPEN' })
+  // same words, other punctuation and case
+  expect(similarOpen(list, s, { project: 'app', text: 'write the  retry docs' })?.item.id).toBe('a')
+  expect(similarOpen(list, s, { project: 'app', text: 'write the retry docs' })?.kind).toBe('same')
+  // the same PR, other words
+  expect(similarOpen(list, s, { project: 'app', text: 'review the PR', source: PR })).toMatchObject({ kind: 'same', item: { id: 'c' } })
+  // most words shared, or a long shared start in Chinese: like, still added
+  expect(similarOpen(list, s, { project: 'app', text: 'write the retry docs today' })?.kind).toBe('like')
+  expect(similarOpen(list, s, { project: 'app', text: '在 codex-review.md 評估表補上 10/27 的兩列紀錄' })?.kind).toBe('like')
+  // another project, or something else: nothing
+  expect(similarOpen(list, s, { project: 'web', text: 'write the retry docs' })).toBe(null)
+  expect(similarOpen(list, s, { project: 'app', text: 'call the vet' })).toBe(null)
 })

@@ -33,7 +33,6 @@ import {
   deleteItem,
   isHere,
   isOpenItem,
-  isStale,
   mood,
   newId,
   newestTalks,
@@ -51,8 +50,8 @@ import {
   saying,
   shortLink,
   shown,
+  similarOpen,
   sourceOf,
-  STALE_DAYS,
 } from './todo'
 
 const PANE = 'puppy-todo'
@@ -71,6 +70,10 @@ const EMPTY: View = {
   convos: null,
   isShowingDone: false,
   isShowingConvos: false,
+  isShowingAllAsks: false,
+  isShowingInProject: false,
+  openProjects: [],
+  openItem: null,
   at: null,
   notes: [],
 }
@@ -688,9 +691,18 @@ export const register: Register = on => {
       if (prText && !pr) {
         return { deny: 'pr must look like https://github.com/<owner>/<repo>/pull/<n>' }
       }
-      const item = await add($, said, { project: text(e, 'project'), link: text(e, 'link'), pr: pr ?? undefined })
+      // one thing, one item: the same words (or the same PR) already open in this project is not added again
+      const v = await read($, view)
+      const project = text(e, 'project') || v.here.project || projectOf(await $.session.cwd())
+      // the files, not the view: the view may not have looked yet in a new session
+      const twin = similarOpen(await readItems($), v.prStates, { project, text: said, source: pr ?? undefined })
+      if (twin?.kind === 'same') {
+        return { deny: `already on the list, not added: ${line(twin.item, v.prStates)}` }
+      }
+      const item = await add($, said, { project, link: text(e, 'link'), pr: pr ?? undefined })
+      const note = twin ? `\nlooks like an open item; if it is the same thing, say so to the person instead of keeping both: ${line(twin.item, v.prStates)}` : ''
 
-      return { result: `added ${line(item, (await read($, view)).prStates)}` }
+      return { result: `added ${line(item, (await read($, view)).prStates)}${note}` }
     } catch (err) {
       return { deny: `could not add: ${String(err)}` }
     }
@@ -758,7 +770,6 @@ export const register: Register = on => {
     const open = all.filter(i => isOpenItem(i, v.prStates))
     const done = all.filter(i => !isOpenItem(i, v.prStates))
     const mine = open.filter(i => isHere(i, v.here))
-    const others = open.filter(i => !isHere(i, v.here))
     const asks = recentAsks(v.talks, now)
     const clear = (v.convos ?? []).filter(c => c.verdict.state === 'clear')
 
@@ -779,78 +790,79 @@ export const register: Register = on => {
         {body}
       </Box>
     )
-    // the ✕ shows when the pointer is on the row (the desktop); with no pointer it always shows
+    // the ⋯ shows when the pointer is on the row (the desktop); with no pointer it always shows
     const hasPointer = e.surface === 'desktop'
     // a grey pixel icon where the surface draws pictures, its text mark elsewhere (the terminal)
     const hasSvg = isGraphical && 'Svg' in table
     const icon = (name: IconName, alt: string) =>
       hasSvg && 'Svg' in table ? <table.Svg source={iconSvg(name)} alt={alt} width={14} height={14} /> : <Text dimColor>{MARKS[name]}</Text>
-    // a narrow pane keeps the words: the facts on the right get shorter
-    const isNarrow = width < 50
-    // an open to-do: ○ to tick it, its words, then on the right its age and a ✕.
-    // a PR item has ↗ and no tick or ✕: github ticks it
+    const toggle = (pick: (was: View) => Partial<View>) => () => update($, view, was => ({ ...was, ...pick(was) }))
+    // an open to-do: ○ to tick it, its words, its link and age on the right, and ⋯ for the rest.
+    // a PR item has ↗ and no tick: github ticks it
     const row = (i: Item) => {
       const isPr = sourceOf(i) !== null
-      const o = outcomeOf(i, v.prStates)
       const scope = `row-${i.id}`
       const born = bornAt(i)
-      const wait = o.state === 'unknown' ? (isNarrow ? 'unchecked' : 'not checked yet') : isNarrow ? 'to merge' : 'waiting for merge'
       const link = i.link?.startsWith('https://') ? i.link : undefined
       const age = Number.isNaN(born) ? '' : ago(now, born)
-      const isOld = isStale(i, now)
-      // the columns the bar, the mark and the facts on the right take, each with its gap
-      const right = 6 + (isPr ? wait.length + 1 : 2) + (link ? (isGraphical ? 4 : shortLink(link).length) + 1 : 0) + (age ? age.length + 1 + (isOld ? 2 : 0) : 0)
+      const isOpen = v.openItem === i.id
+      // the columns the mark and the facts on the right take, each with its gap
+      const right = 4 + (link ? shortLink(link).length + 1 : 0) + (age ? age.length + 1 : 0) + 2
 
       return (
-        // the row fills the room beside the bar and may get narrower than its words: the words cut, the facts stay at the right
-        <Box key={`i-${i.id}`} flexDirection="row" gap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0} hover={{ scope }}>
-          {/* one width for the tick and the arrow, so the words line up */}
-          <Box width={3} flexShrink={0} justifyContent="center">
-            {isPr ? icon('pr', 'waiting for merge') : <Button key={`tick-${i.id}`} label="○" plain dimColor onPress={() => press($, i.id, 'done')} />}
-          </Box>
-          <Box flexGrow={1} flexShrink={1} minWidth={0}>
-            <Text wrap="truncate-end">{fit(i.text, inner - right)}</Text>
-          </Box>
-          {/* the facts on the right never shrink or wrap: the words in the middle give way */}
-          <Box flexDirection="row" gap={1} flexShrink={0}>
-            {isPr ? <Text dimColor>{wait}</Text> : null}
-            {link ? (
-              // the terminal prints a link's whole address; a short name keeps the row on one line
-              isGraphical ? <Link href={link} label="link" /> : <Text dimColor>{shortLink(link)}</Text>
-            ) : null}
-            {age && isOld ? (
-              // old: the age in the full text color, bold, after a small mark; still grey, no color
-              <Box key={`old-${i.id}`} flexDirection="row" gap={1}>
-                {icon('old', 'older than a week')}
-                <Text weight="bold">{age}</Text>
-              </Box>
-            ) : age ? (
-              <Text dimColor>{age}</Text>
-            ) : null}
-          </Box>
-          {isPr ? null : (
-            <Box {...(hasPointer ? { display: 'none', hover: { scope, display: 'flex' } } : {})}>
-              <Button key={`del-${i.id}`} label="✕" plain dimColor onPress={() => press($, i.id, 'delete')} />
+        <Box key={`i-${i.id}`} flexDirection="column">
+          {/* the row may get narrower than its words: the words cut, the facts stay at the right */}
+          <Box key={`r-${i.id}`} flexDirection="row" gap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0} hover={{ scope }}>
+            {/* one width for the tick and the arrow, so the words line up */}
+            <Box width={3} flexShrink={0} justifyContent="center">
+              {isPr ? icon('pr', 'waiting for merge') : <Button key={`tick-${i.id}`} label="○" plain dimColor onPress={() => press($, i.id, 'done')} />}
             </Box>
-          )}
+            <Box flexGrow={1} flexShrink={1} minWidth={0}>
+              <Text wrap="truncate-end">{fit(i.text, inner - right)}</Text>
+            </Box>
+            {/* the facts on the right never shrink or wrap: the words in the middle give way */}
+            <Box flexDirection="row" gap={1} flexShrink={0}>
+              {link ? (
+                // a short name (#78), not the address: the terminal prints a link's whole address
+                isGraphical ? <Link href={link} label={shortLink(link)} /> : <Text dimColor>{shortLink(link)}</Text>
+              ) : null}
+              {age ? <Text dimColor>{age}</Text> : null}
+            </Box>
+            <Box {...(hasPointer && !isOpen ? { display: 'none', hover: { scope, display: 'flex' } } : {})}>
+              <Button key={`more-${i.id}`} label="⋯" plain dimColor onPress={toggle(was => ({ openItem: was.openItem === i.id ? null : i.id }))} />
+            </Box>
+          </Box>
+          {isOpen ? (
+            // the rest, only for the row asked about: the whole text, where it came from, delete
+            <Box key={`detail-${i.id}`} flexDirection="column" paddingLeft={4}>
+              <Text>{i.text}</Text>
+              <Text dimColor wrap="truncate-end">
+                {i.session?.title ? `from ${i.session.title} · ` : ''}
+                {Number.isNaN(born) ? '' : `added ${new Date(born).toISOString().slice(0, 10)}`}
+                {isPr ? ' · done when github merges it' : ''}
+              </Text>
+              {isPr ? null : <Button key={`del-${i.id}`} label="delete" plain dimColor onPress={() => press($, i.id, 'delete')} />}
+            </Box>
+          ) : null}
         </Box>
       )
     }
-    // a project's items, each project its own card: a dim bar down the left edge, the rows beside it.
-    // the bar is a dim mark on each row, not a filled Box: a theme's grey fill is white in 16-color themes
-    const rows = (key: string, list: readonly Item[]) => (
-      <Box key={`rows-${key}`} flexDirection="column">
-        {list.map(i => (
-          <Box key={`bar-${key}-${i.id}`} flexDirection="row" gap={1}>
-            <Text dimColor>▎</Text>
-            {row(i)}
-          </Box>
-        ))}
+    const rows = (list: readonly Item[]) => list.map(i => row(i))
+    // a fold: ▸ closed, ▾ open, the name to press, its count on the right like a card's
+    const fold = (key: string, isOpen: boolean, name: string, count: number, onPress: () => unknown) => (
+      <Box key={`row-${key}`} flexDirection="row" justifyContent="space-between" gap={1}>
+        <Button key={key} label={`${isOpen ? '▾' : '▸'} ${name}`} plain dimColor onPress={onPress} />
+        <Text dimColor>{count}</Text>
       </Box>
     )
-    const waiting = open.filter(i => sourceOf(i) !== null).length
-    const stale = open.filter(i => isStale(i, now)).length
+    // this project first: this conversation's items, then (folded) the project's other conversations.
+    // every other project is one line with its count, opened on a press
+    const hereProject = v.here.project
+    const inProject = open.filter(i => !isHere(i, v.here) && i.project === hereProject)
+    const elsewhere = open.filter(i => !isHere(i, v.here) && i.project !== hereProject)
+    const projects = byProject(elsewhere)
     const ASKS_SHOWN = 3
+    const askList = v.isShowingAllAsks ? asks : asks.slice(0, ASKS_SHOWN)
 
     return (
       <Box flexDirection="column" gap={1}>
@@ -864,44 +876,13 @@ export const register: Register = on => {
           <Button key="refresh" label="refresh" dimColor onPress={() => requestRefresh($, { isAsked: true })} />
         </Box>
 
-        {open.length > 0 && (
-          <Box key="summary" flexDirection="column">
-            {/* grey only: the counts in the text color, the words dim */}
-            <Text wrap="truncate-end">
-              {waiting > 0 ? (
-                <Text>
-                  ↗ {waiting}
-                  <Text dimColor> waiting for merge · </Text>
-                </Text>
-              ) : null}
-              ○ {open.length - waiting}
-              <Text dimColor> open</Text>
-            </Text>
-            {stale > 0 ? (
-              <Box key="old" flexDirection="row" gap={1}>
-                {icon('old', 'older than a week')}
-                <Text weight="bold" wrap="truncate-end">
-                  {stale} {stale === 1 ? 'item' : 'items'} older than {STALE_DAYS} days
-                </Text>
-              </Box>
-            ) : null}
-          </Box>
-        )}
-
-        {card(
-          'here',
-          fit(v.here.title || 'this conversation', inner - v.here.project.length - 4),
-          v.here.project,
-          v.here.recap ? <Text dimColor wrap="truncate-end">last: {fit(v.here.recap, inner - 6)}</Text> : null,
-        )}
-
         {asks.length > 0 &&
           card(
             'asks',
             'asked you',
             <Text color="warning">{asks.length} waiting</Text>,
             <Box flexDirection="column">
-              {asks.slice(0, ASKS_SHOWN).map(t => (
+              {askList.map(t => (
                 <Box key={`ask-${t.id}`} flexDirection="column">
                   <Text wrap="truncate-end">
                     {fit(t.title, inner - 16)}
@@ -910,15 +891,18 @@ export const register: Register = on => {
                   <Text dimColor wrap="truncate-end">  {fit(t.ask ?? '', inner - 2)}</Text>
                 </Box>
               ))}
-              {asks.length > ASKS_SHOWN ? <Text dimColor>and {asks.length - ASKS_SHOWN} more</Text> : null}
+              {asks.length > ASKS_SHOWN
+                ? fold('more-asks', v.isShowingAllAsks, v.isShowingAllAsks ? 'fewer' : 'more', asks.length - ASKS_SHOWN, toggle(was => ({ isShowingAllAsks: !was.isShowingAllAsks })))
+                : null}
             </Box>,
           )}
 
         {card(
-          'todo',
-          'to-do',
-          `${open.length} open`,
+          'here',
+          fit(hereProject || v.here.title || 'this conversation', inner - 8),
+          `${mine.length + inProject.length}`,
           <Box flexDirection="column" gap={1}>
+            {v.here.recap ? <Text dimColor wrap="truncate-end">last: {fit(v.here.recap, inner - 6)}</Text> : null}
             {Input ? (
               <Input
                 key="add"
@@ -932,16 +916,49 @@ export const register: Register = on => {
               />
             ) : null}
             {mine.length > 0 ? (
-              <Box key="here" flexDirection="column">
+              <Box key="mine" flexDirection="column">
                 <Text dimColor>this conversation</Text>
-                {rows('here', mine)}
+                {rows(mine)}
+              </Box>
+            ) : null}
+            {inProject.length > 0 && mine.length > 0 ? (
+              <Box key="in-project" flexDirection="column">
+                {fold('show-in-project', v.isShowingInProject, 'other conversations', inProject.length, toggle(was => ({ isShowingInProject: !was.isShowingInProject })))}
+                {v.isShowingInProject ? rows(inProject) : null}
+              </Box>
+            ) : inProject.length > 0 ? (
+              // nothing written here yet: the project's other items are what this conversation picks up
+              <Box key="in-project" flexDirection="column">
+                {rows(inProject)}
               </Box>
             ) : null}
             {open.length === 0 ? <Text dimColor>nothing to do. the puppy naps.</Text> : null}
           </Box>,
         )}
 
-        {byProject(others).map(([project, list]) => card(`p-${project}`, project, `${list.length}`, rows(`p-${project}`, list)))}
+        {projects.length > 0 &&
+          card(
+            'projects',
+            'other projects',
+            `${elsewhere.length}`,
+            <Box flexDirection="column">
+              {projects.map(([project, list]) => {
+                const isOpen = v.openProjects.includes(project)
+
+                return (
+                  <Box key={`p-${project}`} flexDirection="column">
+                    {fold(`show-p-${project}`, isOpen, project, list.length, () =>
+                      update($, view, was => ({
+                        ...was,
+                        openProjects: was.openProjects.includes(project) ? was.openProjects.filter(p => p !== project) : [...was.openProjects, project],
+                      })),
+                    )}
+                    {isOpen ? <Box paddingLeft={2} flexDirection="column">{rows(list)}</Box> : null}
+                  </Box>
+                )
+              })}
+            </Box>,
+          )}
 
         {done.length > 0 && (
           <Box flexDirection="column">

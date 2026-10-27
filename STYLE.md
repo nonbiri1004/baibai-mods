@@ -22,6 +22,7 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
 - Give each card a `key` that starts with `card-`, so tests can find it.
 - Lists inside a card get a dim label above each group, not another border. One border level only.
 - Extra lists (done items, old things) stay folded below the cards: a dim button `▸ done 3`, `▾` when open.
+- Show little at first. A long list is one line per group (`▸ name` on the left, the count on the right) and opens on a press. A row's details (the whole text, where it came from, delete) sit behind `⋯`, not on every row.
 - Long text: on the terminal, clip by columns (a card has 4 fewer than the pane: border and padding). On the desktop, give the `Text` `wrap="truncate-end"` and let it cut at the edge; counting columns there cuts too early, most of all for Chinese. In a row, the Box around that Text needs `flexShrink={1} minWidth={0}`; without `minWidth={0}` it never gets narrower than its text and runs past the card.
 - Rows with a mark in front (○, ↗, ✓): put the mark in a `<Box width={3} flexShrink={0}>`, so the words line up.
 - Facts on the right of a row (a state, a link, an age) sit in one `<Box flexShrink={0}>`: they never wrap, the words in the middle give way. On the terminal a `Link` prints its whole address, so show a short name there (`#16`).
@@ -34,8 +35,7 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
   - `success`: something is working right now.
   - Everything else: `dimColor`, or the normal text color.
 - One color word per line at most. Color the word that matters (the state, the label), not the whole line.
-- No color per project or per group: groups are told apart by cards and names, in greys. Something old or important gets the full text color, bold, and a small mark, not a new color.
-- A grey bar down a list's left edge is a dim `▎` on each row, not a Box with a `backgroundColor`: a theme's grey fill turns white in 16-color themes.
+- No color per project or per group: groups are told apart by cards and names, in greys. Something important gets the full text color, not a new color.
 
 ## Pictures (SVG)
 
