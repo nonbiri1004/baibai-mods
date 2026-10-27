@@ -76,13 +76,24 @@ export function deleteItem(item: Item, at: string): Item {
   return { ...item, schemaVersion: 2, deletedAt: at, deletedBy: 'person' }
 }
 
+// an item an older version left for GitHub to tick when its PR merged: its file still says open even
+// after the merge, and this list doesn't ask GitHub, so it isn't shown
+export function isForGithub(item: Item): boolean {
+  const o = item as Item & { source?: unknown; completion?: { mode?: unknown } | null }
+
+  return o.source !== undefined || o.completion?.mode === 'source'
+}
+
+// when it was done: doneAt, or the time an older version kept only in declaration.at
+const doneAtOf = (i: Item) => i.doneAt ?? i.declaration?.at ?? ''
+
 // open ones oldest first, so nothing sinks; done ones newest first, for a few days
 export function listOf(items: readonly Item[], now: number): { open: Item[]; done: Item[] } {
-  const kept = items.filter(i => !i.deletedAt)
+  const kept = items.filter(i => !i.deletedAt && !isForGithub(i))
   const open = kept.filter(i => i.status === 'open').sort((a, b) => a.id.localeCompare(b.id))
   const done = kept
-    .filter(i => i.status === 'done' && i.doneAt && now - Date.parse(i.doneAt) < DONE_DAYS * DAY)
-    .sort((a, b) => (b.doneAt ?? '').localeCompare(a.doneAt ?? ''))
+    .filter(i => i.status === 'done' && doneAtOf(i) !== '' && now - Date.parse(doneAtOf(i)) < DONE_DAYS * DAY)
+    .sort((a, b) => doneAtOf(b).localeCompare(doneAtOf(a)))
 
   return { open, done }
 }

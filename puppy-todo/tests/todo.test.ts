@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Item } from '../types'
-import { deleteItem, listOf, newId, parseItem, projectOf, reopen, tick } from '../hooks/todo'
+import { deleteItem, isForGithub, listOf, newId, parseItem, projectOf, reopen, tick } from '../hooks/todo'
 
 const NOW = Date.parse('2026-10-27T10:00:00Z')
 const AT = new Date(NOW).toISOString()
@@ -55,4 +55,18 @@ test('the list: open oldest first, done newest first for three days, deleted nev
   )
   expect(open.map(i => i.id)).toEqual(['20261026-0900-a', '20261027-0900-b'])
   expect(done.map(i => i.id)).toEqual(['d1', 'd2'])
+})
+
+test('Codex #2: an old done item that kept its time only in declaration.at still shows under done', () => {
+  const { open, done } = listOf([item({ id: 'old-done', status: 'done', declaration: { by: 'person', at: '2026-10-27T08:00:00Z' } })], NOW)
+  expect(open).toEqual([])
+  expect(done.map(i => i.id)).toEqual(['old-done'])
+})
+
+test('Codex #1: an item an older version left for GitHub to tick is not shown', () => {
+  const pr = { ...item({ id: 'pr' }), source: { type: 'github-pr', host: 'github.com', repo: 'you/app', number: 8 }, completion: { mode: 'source' } } as Item
+  const byMode = { ...item({ id: 'mode' }), completion: { mode: 'source' } } as Item
+  const linked = { ...item({ id: 'link' }), link: 'https://github.com/you/app/pull/8', completion: { mode: 'declared' } } as Item
+  expect([pr, byMode, linked].map(isForGithub)).toEqual([true, true, false])
+  expect(listOf([pr, byMode, linked], NOW).open.map(i => i.id)).toEqual(['link'])
 })

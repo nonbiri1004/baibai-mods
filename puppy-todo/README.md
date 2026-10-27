@@ -50,7 +50,8 @@ one small json file per item in `~/.claude/todo/items/`. the file name is the id
 
 - ticking sets `status: "done"`, `doneAt`, and `declaration: { by: "person" }`. opening it again clears those and sets `reopenedAt`.
 - delete sets `deletedAt` and `deletedBy`. the file stays; the item is never shown again.
-- files from older versions still work: their extra fields (a PR, the conversation that wrote it) are kept and not used.
+- files from older versions still work: their extra fields (the conversation that wrote it, who said it was done) are kept and not used.
+- items an older version left for GitHub to tick when a PR merged (`source`, or `completion.mode: "source"`) aren't shown: their file says open even after the merge, and this list doesn't ask GitHub. the files stay.
 - the list lives on this computer; a second computer has its own `~/.claude/todo/`.
 
 ## install
