@@ -110,6 +110,8 @@ export type View = {
   prStates: Record<string, PrState>
   // every conversation the app has open, with what is still open in it; null when the app's list can't be read
   convos: Convo[] | null
+  // when tidy up was last worked out (it is only while unfolded or on refresh); none yet when absent
+  convosAt?: number
   // the two folded rows at the bottom
   isShowingDone: boolean
   isShowingConvos: boolean

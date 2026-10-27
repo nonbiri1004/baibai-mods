@@ -50,6 +50,7 @@ const VIEW: View = {
   ],
   isShowingDone: false,
   isShowingConvos: false,
+  convosAt: NOW - 60_000,
   at: NOW,
   notes: [],
 }
@@ -99,6 +100,18 @@ test('the pane: tick and ✕ on to-dos, no buttons on PR rows, done and tidy-up 
     // nothing in the pane archives or skips
     const labels = (await ui.findAll({ type: 'Button' })).map(b => b.text)
     expect(labels.some(l => /archive|skip/.test(l))).toBe(false)
+    await ui.unmount()
+  }
+})
+
+test('folded tidy up shows no count it hasn\'t worked out lately', async ($, on) => {
+  let convosAt: number | undefined
+  on('state.get', () => ({ value: { value: { ...VIEW, convosAt }, version: 1 } }))
+  // never worked out, and worked out ten minutes ago
+  for (const at of [undefined, NOW - 10 * 60_000]) {
+    convosAt = at
+    const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+    expect((await ui.find({ type: 'Button', key: 'show-convos' }))?.text).toBe('▸ tidy up')
     await ui.unmount()
   }
 })

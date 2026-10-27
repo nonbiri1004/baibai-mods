@@ -62,6 +62,11 @@ that's all. everything else happens by itself.
 
 one small json file per item in `~/.claude/todo/items/`, so conversations writing at the same time don't overwrite each other's items. the file name is the id.
 
+beside it, three files the panes share so twenty open conversations do the work of one. they are only a cache: delete them any time.
+
+- `talks.json`: what each recent transcript said. one pane at a time reads transcripts (it holds `scan.lease`), and every pane uses what it wrote.
+- `prs.json`: what GitHub last said about each PR. an open PR is asked again after 5 minutes, a merged or closed one only when you press refresh.
+
 ```json
 {
   "schemaVersion": 2,

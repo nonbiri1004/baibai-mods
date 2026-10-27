@@ -6,6 +6,23 @@ import { iconSvg, MARKS } from './icons'
 import type { IconName } from './icons'
 import { folderFiles, isWorktree, matchByTime, parseSessions, parseWorktree, pickByTitle, sortConvos, verdictOf } from './convos'
 import {
+  Gate,
+  LEASE_MS,
+  LEASE_SETTLE_MS,
+  SCAN_BATCH,
+  canTake,
+  chunks,
+  isPrDue,
+  mapLimit,
+  mergeReads,
+  parseLease,
+  parsePrChecks,
+  parseReads,
+  recordPrs,
+  writeReads,
+} from './shared'
+import type { Read } from './shared'
+import {
   FACES,
   ago,
   bornAt,
@@ -42,9 +59,9 @@ const PANE = 'puppy-todo'
 // conversations older than this, or past this many, are left out of "asked you"
 const TALK_DAYS = 14
 const TALK_MAX = 40
-// how often the pane looks again (the shared list, transcripts); gh only every GH_EVERY
+// how often the pane looks again (the shared list, transcripts); gh only when a PR is due (shared.ts)
 const TICK = 60_000
-const GH_EVERY = 5 * 60_000
+const TICK_JITTER = 10_000
 
 const EMPTY: View = {
   here: { id: '', title: '', project: '', cwd: '' },
@@ -59,9 +76,11 @@ const EMPTY: View = {
 }
 const view = atom({ plugin: 'puppy-todo', key: 'view' } as const, EMPTY)
 
-// per transcript: what it said, read again only when the file changes (a reload starts over)
-const talkCache = new Map<string, { mtimeMs: number; talk: Talk }>()
-let ghAt = 0
+// per transcript: what it said, read again only when the file changes. a reload starts from
+// what the other panes shared in talks.json
+const talkCache = new Map<string, Read>()
+// the mtime of talks.json when it was last loaded
+let sharedAt: number | null = null
 // the gh that ran last time
 let ghBin: string | null = null
 let ticking = false
@@ -84,6 +103,11 @@ async function home($: EngineInterface): Promise<string> {
 
 async function todoDir($: EngineInterface, part: 'items'): Promise<string> {
   return `${await home($)}/.claude/todo/${part}`
+}
+
+// the files every pane shares (shared.ts)
+async function todoPath($: EngineInterface, name: 'talks.json' | 'prs.json' | Lock): Promise<string> {
+  return `${await home($)}/.claude/todo/${name}`
 }
 
 async function readJsonDir<T>($: EngineInterface, dir: string, parse: (text: string, name: string) => T | null): Promise<T[]> {
@@ -135,22 +159,97 @@ async function listTranscripts($: EngineInterface): Promise<TranscriptFile[]> {
     .sort((a, b) => b.mtimeMs - a.mtimeMs)
 }
 
-// what each transcript says, read again only when the file changed
+// reads one batch into talkCache. a batch that fails or runs out of time keeps what was read
+// before, so the pane shows older words rather than none
+async function scanBatch($: EngineInterface, batch: readonly TranscriptFile[]): Promise<void> {
+  const mtimes = new Map(batch.map(f => [f.path, f.mtimeMs]))
+  const scanned = await $.process.run(['sh', '-c', SCAN, 'sh', ...batch.map(f => f.path)], { timeoutMs: 30_000 }).catch(() => null)
+  if (!scanned) {
+    return
+  }
+  const talks = parseScan(scanned.stdout, mtimes)
+  batch.forEach((f, i) => {
+    const talk = talks[i]
+    // a file that couldn't be read is read again next time, and until then is no transcript
+    if (talk && !talk.isUnread) {
+      talkCache.set(f.path, { mtimeMs: f.mtimeMs, talk })
+    } else {
+      talkCache.delete(f.path)
+    }
+  })
+}
+
+// what other panes read: loaded again only when the file changed
+async function loadShared($: EngineInterface): Promise<void> {
+  const path = await todoPath($, 'talks.json')
+  const stat = await $.fs.stat(path).catch(() => null)
+  if (!stat || stat.mtimeMs === sharedAt) {
+    return
+  }
+  sharedAt = stat.mtimeMs
+  mergeReads(talkCache, parseReads(await $.fs.read(path).catch(() => '')))
+}
+
+// what's on disk first: a pane that scanned at the same moment keeps what it read
+async function saveShared($: EngineInterface): Promise<void> {
+  const path = await todoPath($, 'talks.json')
+  mergeReads(talkCache, parseReads(await $.fs.read(path).catch(() => '')))
+  const since = (await $.clock.now()) - TALK_DAYS * 86_400_000
+  await $.fs.write(path, writeReads(talkCache, since))
+}
+
+type Lock = 'scan.lease' | 'prs.lease'
+
+// written, then after a moment read back: of panes that wrote at nearly the same time, only the
+// last one read back goes on. no file call is atomic, so rarely two go on at once; that only
+// costs a scan done twice (saveShared and recordPrs merge, so nothing read is lost)
+async function takeLease($: EngineInterface, lock: Lock, owner: string): Promise<boolean> {
+  const path = await todoPath($, lock)
+  const now = await $.clock.now()
+  const held = parseLease(await $.fs.read(path).catch(() => ''))
+  if (!canTake(held, owner, now)) {
+    return false
+  }
+  await $.fs.write(path, JSON.stringify({ owner, until: now + LEASE_MS }))
+  if (held?.owner !== owner) {
+    await $.clock.sleep(LEASE_SETTLE_MS)
+  }
+
+  return parseLease(await $.fs.read(path).catch(() => ''))?.owner === owner
+}
+
+async function dropLease($: EngineInterface, lock: Lock, owner: string): Promise<void> {
+  const path = await todoPath($, lock)
+  if (parseLease(await $.fs.read(path).catch(() => ''))?.owner === owner) {
+    await $.fs.write(path, JSON.stringify({ owner, until: 0 }))
+  }
+}
+
+// what each transcript says, read again only when the file changed. this conversation's own
+// transcript it reads itself; the rest only the pane holding the lease reads, for every pane
 async function scanTalks($: EngineInterface, files: readonly TranscriptFile[]): Promise<Map<string, Talk>> {
-  const stale = files.filter(f => talkCache.get(f.path)?.mtimeMs !== f.mtimeMs)
-  if (stale.length > 0) {
-    const mtimes = new Map(stale.map(f => [f.path, f.mtimeMs]))
-    const scanned = await $.process.run(['sh', '-c', SCAN, 'sh', ...stale.map(f => f.path)], { timeoutMs: 120_000 })
-    const talks = parseScan(scanned.stdout, mtimes)
-    stale.forEach((f, i) => {
-      const talk = talks[i]
-      // a file that couldn't be read is read again next time, and until then is no transcript
-      if (talk && !talk.isUnread) {
-        talkCache.set(f.path, { mtimeMs: f.mtimeMs, talk })
-      } else {
-        talkCache.delete(f.path)
+  const ownId = await $.session.id()
+  await loadShared($).catch(() => undefined)
+  const isStale = (f: TranscriptFile) => talkCache.get(f.path)?.mtimeMs !== f.mtimeMs
+  const own = files.filter(f => isStale(f) && f.path.endsWith(`/${ownId}.jsonl`))
+  if (own.length > 0) {
+    await scanBatch($, own)
+  }
+  if (files.some(isStale) && (await takeLease($, 'scan.lease', ownId).catch(() => false))) {
+    try {
+      // another pane may have shared these while this one waited for the lease
+      await loadShared($).catch(() => undefined)
+      for (const batch of chunks(files.filter(isStale), SCAN_BATCH)) {
+        await scanBatch($, batch)
+        await saveShared($)
+        // held a little longer each batch; lost (another pane took it) means stop
+        if (!(await takeLease($, 'scan.lease', ownId))) {
+          break
+        }
       }
-    })
+    } finally {
+      await dropLease($, 'scan.lease', ownId).catch(() => undefined)
+    }
   }
   const out = new Map<string, Talk>()
   for (const f of files) {
@@ -253,11 +352,15 @@ async function readConvos(
     }
   }
 
+  // git once per folder, four at a time: conversations often share a worktree
+  const folders = [...new Set(live.map(s => s.cwd))]
+  const worktrees = new Map(await mapLimit(folders, 4, async cwd => [cwd, await readWorktree($, cwd)] as const))
+
   return Promise.all(
     live.map(async session => {
       const path = paths.get(session.id)
       const talk = path ? (talks.get(path) ?? null) : null
-      const worktree = await readWorktree($, session.cwd)
+      const worktree = worktrees.get(session.cwd) ?? null
       const isThis = session.title === c.here.title && session.cwd === c.here.cwd && talk?.id === c.here.id
 
       return {
@@ -293,8 +396,10 @@ async function gh($: EngineInterface, args: readonly string[]): Promise<{ ok: bo
 }
 
 // asks github about each PR an item waits on, one by one: a PR missing from the open-PR search
-// proves nothing (past the limit, or someone else's), so every tracked PR is asked by its URL
-async function readPrStates($: EngineInterface, items: readonly Item[]): Promise<Record<string, PrState>> {
+// proves nothing (past the limit, or someone else's), so every tracked PR is asked by its URL.
+// what github said is shared in prs.json: a PR is asked when it's due (isPrDue) for all panes,
+// or now when the person asked (isAsked)
+async function readPrStates($: EngineInterface, items: readonly Item[], isAsked = false): Promise<Record<string, PrState>> {
   const sources = new Map<string, PrSource>()
   for (const i of items) {
     const s = sourceOf(i)
@@ -302,21 +407,45 @@ async function readPrStates($: EngineInterface, items: readonly Item[]): Promise
       sources.set(prKey(s), s)
     }
   }
-  const got = await Promise.all(
-    [...sources.entries()].map(async ([key, s]) => {
-      const ran = await gh($, ['pr', 'view', prUrl(s), '--json', 'state,mergedAt,closedAt'])
-      const state = ran?.ok ? parsePrState(ran.out) : null
+  const path = await todoPath($, 'prs.json')
+  const now = await $.clock.now()
+  const checks = parsePrChecks(await $.fs.read(path).catch(() => ''))
+  // a PR whose items are all deleted keeps what was last said, and isn't asked again by itself
+  const isKept = (key: string) => items.some(i => !i.deletedAt && sourceOf(i) && prKey(sourceOf(i) as PrSource) === key)
+  const due = [...sources].filter(([key]) => isAsked || (isPrDue(checks[key], now) && (isKept(key) || !checks[key])))
+  // on its own beat one pane asks for all (prs.lease); asked by the person, this pane asks now
+  if (due.length > 0 && (isAsked || (await takeLease($, 'prs.lease', await $.session.id()).catch(() => false)))) {
+    try {
+      const got = await mapLimit(due, 4, async ([key, s]) => {
+        const ran = await gh($, ['pr', 'view', prUrl(s), '--json', 'state,mergedAt,closedAt'])
 
-      return state ? ([key, state] as const) : null
-    }),
-  )
+        return [key, ran?.ok ? parsePrState(ran.out) : null] as const
+      })
+      // read again just before writing: another pane may have asked about other PRs meanwhile
+      const latest = parsePrChecks(await $.fs.read(path).catch(() => ''))
+      recordPrs(latest, got, now)
+      Object.assign(checks, latest)
+      await $.fs.write(path, JSON.stringify(latest)).catch(() => undefined)
+    } finally {
+      if (!isAsked) {
+        await dropLease($, 'prs.lease', await $.session.id()).catch(() => undefined)
+      }
+    }
+  }
+  const out: Record<string, PrState> = {}
+  for (const key of sources.keys()) {
+    const state = checks[key]?.state
+    if (state) {
+      out[key] = state
+    }
+  }
 
-  return Object.fromEntries(got.filter(x => x !== null))
+  return out
 }
 
 
-// reads every source again; github only when asked or every few minutes
-async function refresh($: EngineInterface, isFull = false): Promise<void> {
+// reads every source again. github: each PR when it's due, every PR when the person asked (isAsked)
+async function refresh($: EngineInterface, { isAsked = false }: { isAsked?: boolean }): Promise<void> {
   const now = await $.clock.now()
   const ownId = await $.session.id()
   const notes: string[] = []
@@ -342,28 +471,26 @@ async function refresh($: EngineInterface, isFull = false): Promise<void> {
   const recent = files.filter((f, i) => i < TALK_MAX || f.path.endsWith(`/${ownId}.jsonl`))
   const talks = [...(await scanTalks($, recent).catch(() => new Map<string, Talk>())).values()]
   const was = await read($, view)
-  let { prStates } = was
-  const missing = items.filter(i => sourceOf(i) && !prStates[prKey(sourceOf(i) as PrSource)])
-  if (isFull || now - ghAt > GH_EVERY) {
-    ghAt = now
-    prStates = await readPrStates($, items)
-  } else if (missing.length > 0) {
-    // a new PR item: check it now rather than in five minutes
-    prStates = { ...prStates, ...(await readPrStates($, missing)) }
-  }
+  const prStates = await readPrStates($, items, isAsked).catch(() => was.prStates)
   const own = talks.find(t => t.id === ownId)
   const others = newestTalks(talks).filter(
     t => t.id !== ownId && t.title !== '' && !(own && t.title === own.title && t.cwd === own.cwd) && isLiveTitle(sessions, t.title),
   )
   const here = { id: ownId, title: own?.title || (await firstPrompt($)) || '', project, cwd, recap: own?.recap }
-  const convos = sessions
-    ? await readConvos($, { sessions, files, items, prStates, here }).catch(() => {
-        notes.push('could not read the conversations')
+  // tidy up reads every conversation's folder and asks git about each worktree: only while it's
+  // unfolded or when the person asked. folded, it keeps what it had (or nothing yet)
+  const isConvosWanted = isAsked || was.isShowingConvos
+  const convos = !sessions
+    ? null
+    : isConvosWanted
+      ? await readConvos($, { sessions, files, items, prStates, here }).catch(() => {
+          notes.push('could not read the conversations')
 
-        return null
-      })
-    : null
-  await update($, view, v => ({ ...v, here, talks: others, convos, items, prStates, at: now, notes }))
+          return null
+        })
+      : (was.convos ?? [])
+  const convosAt = isConvosWanted && convos !== null ? now : was.convosAt
+  await update($, view, v => ({ ...v, here, talks: others, convos, convosAt, items, prStates, at: now, notes }))
 }
 
 // what the person first asked here, as a title when the app gave the conversation none
@@ -374,14 +501,28 @@ async function firstPrompt($: EngineInterface): Promise<string | undefined> {
   return first ? clip(first.text, 40) : undefined
 }
 
+// one pass at a time; asked during one, one more after it
+let gate: Gate<{ isAsked?: boolean }> | null = null
+
+function requestRefresh($: EngineInterface, o: { isAsked?: boolean } = {}): Promise<void> {
+  gate ??= new Gate(next => refresh($, next))
+
+  return gate.ask(o)
+}
+
+// the next look is set when this one ends, never on a fixed beat: a slow pass can't pile up.
+// a few seconds either way, so panes started together don't all look in the same second
 function startTicking($: EngineInterface): void {
   if (ticking) {
     return
   }
   ticking = true
-  $.clock.every(TICK, () => {
-    void refresh($).catch(() => undefined)
-  })
+  const next = () => {
+    $.clock.after(TICK + Math.round((Math.random() - 0.5) * 2 * TICK_JITTER), () => {
+      void requestRefresh($).finally(next)
+    })
+  }
+  next()
 }
 
 async function add($: EngineInterface, text: string, extra: { project?: string; link?: string; pr?: PrSource; by?: string } = {}): Promise<Item> {
@@ -403,7 +544,7 @@ async function add($: EngineInterface, text: string, extra: { project?: string; 
       : { completion: { mode: 'declared' } as const }),
   }
   await writeItem($, item)
-  const prStates = extra.pr ? { ...v.prStates, ...(await readPrStates($, [item])) } : v.prStates
+  const prStates = extra.pr ? { ...v.prStates, ...(await readPrStates($, [item], true)) } : v.prStates
   await update($, view, was => ({ ...was, items: [...was.items, item], prStates }))
 
   return item
@@ -422,7 +563,7 @@ async function declare(
     return null
   }
   if (sourceOf(item) || item.completion?.mode === 'source') {
-    const fresh = await readPrStates($, [item])
+    const fresh = await readPrStates($, [item], true)
     const answer = prAnswer(item, fresh, (await read($, view)).prStates)
     await update($, view, was => ({ ...was, prStates: { ...was.prStates, ...answer.states } }))
 
@@ -447,6 +588,13 @@ async function press($: EngineInterface, id: string, what: 'done' | 'open' | 'de
   const next = what === 'done' ? declareDone(item, { by: 'person', at }) : what === 'open' ? reopen(item, at) : deleteItem(item, { by: 'person', at })
   await writeItem($, next)
   await update($, view, was => ({ ...was, items: was.items.map(i => (i.id === id ? next : i)) }))
+}
+
+// the folded count only while it's recent: folded, tidy up isn't worked out again
+const CONVOS_FRESH_MS = 5 * 60_000
+
+function isConvosFresh(v: View, now: number): boolean {
+  return v.convosAt !== undefined && (v.isShowingConvos || now - v.convosAt < CONVOS_FRESH_MS)
 }
 
 function line(i: Item, prStates: Readonly<Record<string, PrState>>): string {
@@ -516,7 +664,7 @@ export const register: Register = on => {
     })
     const started = await next(e)
     void $.ui.open({ id: PANE, title: 'todo' })
-    void refresh($, true).catch(() => undefined)
+    void requestRefresh($)
     startTicking($)
 
     return started
@@ -524,7 +672,7 @@ export const register: Register = on => {
 
   on('turn.complete', async ($, e, next) => {
     const done = await next(e)
-    void refresh($).catch(() => undefined)
+    void requestRefresh($)
 
     return done
   })
@@ -585,7 +733,7 @@ export const register: Register = on => {
   on('command.run', { command: 'todo' }, async ($, e) => {
     await $.ui.open({ id: PANE, title: 'todo' })
     if (e.args.trim() === '') {
-      void refresh($, true).catch(() => undefined)
+      void requestRefresh($, { isAsked: true })
 
       return { text: 'the to-do pane is open.' }
     }
@@ -713,7 +861,7 @@ export const register: Register = on => {
               <Text dimColor> {saying(asks.length, open.length)}</Text>
             </Text>
           </Box>
-          <Button key="refresh" label="refresh" dimColor onPress={() => refresh($, true)} />
+          <Button key="refresh" label="refresh" dimColor onPress={() => requestRefresh($, { isAsked: true })} />
         </Box>
 
         {open.length > 0 && (
@@ -824,9 +972,19 @@ export const register: Register = on => {
           <Box flexDirection="column">
             <Button
               key="show-convos"
-              label={`${v.isShowingConvos ? '▾' : '▸'} tidy up: ${clear.length} of ${v.convos.length} conversations have nothing open`}
+              label={
+                isConvosFresh(v, now)
+                  ? `${v.isShowingConvos ? '▾' : '▸'} tidy up: ${clear.length} of ${v.convos.length} conversations have nothing open`
+                  : `${v.isShowingConvos ? '▾' : '▸'} tidy up`
+              }
               dimColor
-              onPress={() => update($, view, was => ({ ...was, isShowingConvos: !was.isShowingConvos }))}
+              onPress={async () => {
+                const v = await update($, view, was => ({ ...was, isShowingConvos: !was.isShowingConvos }))
+                // unfolded: work it out now, not at the next look
+                if (v.isShowingConvos) {
+                  void requestRefresh($)
+                }
+              }}
             />
             {v.isShowingConvos ? (
               <Box flexDirection="column">
