@@ -654,7 +654,8 @@ export const register: Register = on => {
       const right = 6 + (isPr ? wait.length + 1 : 2) + (link ? (isGraphical ? 4 : shortLink(link).length) + 1 : 0) + (age ? age.length + 1 + (isOld ? 2 : 0) : 0)
 
       return (
-        <Box key={`i-${i.id}`} flexDirection="row" gap={1} alignItems="center" hover={{ scope }}>
+        // the row fills the room beside the bar and may get narrower than its words: the words cut, the facts stay at the right
+        <Box key={`i-${i.id}`} flexDirection="row" gap={1} alignItems="center" flexGrow={1} flexShrink={1} minWidth={0} hover={{ scope }}>
           {/* one width for the tick and the arrow, so the words line up */}
           <Box width={3} flexShrink={0} justifyContent="center">
             {isPr ? icon('pr', 'waiting for merge') : <Button key={`tick-${i.id}`} label="○" plain dimColor onPress={() => press($, i.id, 'done')} />}
@@ -694,9 +695,7 @@ export const register: Register = on => {
         {list.map(i => (
           <Box key={`bar-${key}-${i.id}`} flexDirection="row" gap={1}>
             <Text dimColor>▎</Text>
-            <Box flexGrow={1} flexShrink={1} minWidth={0}>
-              {row(i)}
-            </Box>
+            {row(i)}
           </Box>
         ))}
       </Box>

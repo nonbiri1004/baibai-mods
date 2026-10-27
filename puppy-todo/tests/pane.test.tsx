@@ -73,6 +73,8 @@ test('the pane: tick and ✕ on to-dos, no buttons on PR rows, done and tidy-up 
     // each project is its own card with a grey bar; an open to-do ticks with ○ and shows its age
     expect(await ui.find({ type: 'Box', key: 'card-p-home' })).toBeTruthy()
     expect(await ui.find({ type: 'Box', key: 'bar-p-home-new' })).toBeTruthy()
+    // the row beside the bar can get narrower than its words, so long words cut instead of pushing the age out
+    expect((await ui.find({ type: 'Box', key: 'i-new' }))?.props).toMatchObject({ flexGrow: 1, flexShrink: 1, minWidth: 0 })
     // an old item gets a mark beside its age
     expect(await ui.find({ type: 'Box', key: 'old-mine' })).toBeTruthy()
     expect(await ui.find({ type: 'Box', key: 'old-new' })).toBeFalsy()
