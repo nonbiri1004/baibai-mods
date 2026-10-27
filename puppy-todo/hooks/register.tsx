@@ -694,13 +694,16 @@ export const register: Register = on => {
       // one thing, one item: the same words (or the same PR) already open in this project is not added again
       const v = await read($, view)
       const project = text(e, 'project') || v.here.project || projectOf(await $.session.cwd())
-      // the files, not the view: the view may not have looked yet in a new session
-      const twin = similarOpen(await readItems($), v.prStates, { project, text: said, source: pr ?? undefined })
+      // the files and the shared PR answers, not the view: the view may not have looked yet, or may
+      // still think a merged PR is open
+      const items = (await readItems($)).filter(i => i.project === project)
+      const prStates = { ...v.prStates, ...(await readPrStates($, items)) }
+      const twin = similarOpen(items, prStates, { project, text: said, source: pr ?? undefined })
       if (twin?.kind === 'same') {
-        return { deny: `already on the list, not added: ${line(twin.item, v.prStates)}` }
+        return { deny: `already on the list, not added: ${line(twin.item, prStates)}` }
       }
       const item = await add($, said, { project, link: text(e, 'link'), pr: pr ?? undefined })
-      const note = twin ? `\nlooks like an open item; if it is the same thing, say so to the person instead of keeping both: ${line(twin.item, v.prStates)}` : ''
+      const note = twin ? `\nlooks like an open item; if it is the same thing, say so to the person instead of keeping both: ${line(twin.item, prStates)}` : ''
 
       return { result: `added ${line(item, (await read($, view)).prStates)}${note}` }
     } catch (err) {
