@@ -50,7 +50,7 @@ test('labels are cut by width; a CJK character counts as two', () => {
 test('alerts: a card turning waiting, error or quiet, and new waiting items', () => {
   const t = Date.parse(base.updated)
   const snap = (at: number, ...cards: object[]): Snapshot =>
-    ({ dir: '/s', cards: cards.map(c => parseStatus(file(c))), problems: [], dirError: null, loadedAt: at })
+    ({ dir: '/s', cards: cards.map(c => parseStatus(file(c))), conversations: [], problems: [], dirError: null, loadedAt: at })
   const running = snap(t, { state: 'running', stale_after_sec: 360 })
   expect(alerts(null, running)).toEqual([])                                   // first read: baseline
   expect(alerts(running, snap(t + 60_000, { state: 'running', stale_after_sec: 360 }))).toEqual([])
