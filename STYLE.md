@@ -19,6 +19,7 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
   ```
 
 - The card header: the name on the left in `weight="semibold"`, and on the right, dim, the state, a count or a time, joined by ` · `.
+- A pane with only one card may leave its header out: the first row already says what it is (`•ᴥ• 3 to-do`).
 - Give each card a `key` that starts with `card-`, so tests can find it.
 - Lists inside a card get a dim label above each group, not another border. One border level only.
 - Extra lists (done items, old things) stay folded below the cards: a dim button `▸ done 3`, `▾` when open.
@@ -40,7 +41,7 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
 ## Pictures (SVG)
 
 - Only where the surface has `Svg` (the desktop app). The terminal gets the same facts as text lines: never drop a fact because there is no picture.
-- Small icons are 14×14 pixel drawings in greys only, like lofipuppy.app's `PixelIcon` (see `puppy-todo/hooks/icons.ts`); the terminal shows a text mark in their place.
+- Small icons are 14×14 pixel drawings in greys only, like lofipuppy.app's `PixelIcon`; the terminal shows a text mark in their place.
 - Warm greys, light by day and dark by night with `prefers-color-scheme`. Copy the palette from `puppy-pipelines/hooks/draw.ts` (`--card`, `--line`, `--text`, `--muted`, and the soft `--ok` / `--listen` / `--reject`).
 - Pixel art keeps `shape-rendering="crispEdges"`.
 - The puppy's drawing comes from baibai-brand (generated, see `brand.lock.json`). Never draw or edit the puppy by hand here.

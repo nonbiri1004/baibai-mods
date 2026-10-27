@@ -1,7 +1,7 @@
 {
   "name": "puppy-todo",
-  "version": "0.6.0",
-  "description": "one quiet to-do pane for every conversation: what this one is for, questions waiting on you, PRs to merge, and what's left",
+  "version": "1.0.0",
+  "description": "your own to-do list in a quiet pane: add, tick, delete. nothing else writes to it",
   "types": "./types/index.d.ts",
   "author": {
     "name": "lofi puppy",
@@ -10,5 +10,5 @@
   "homepage": "https://github.com/nonbiri1004/puppy-mods/tree/main/puppy-todo",
   "repository": "https://github.com/nonbiri1004/puppy-mods",
   "license": "MIT",
-  "keywords": ["todo", "sessions", "pane", "puppy", "lofi"]
+  "keywords": ["todo", "pane", "puppy", "lofi"]
 }
