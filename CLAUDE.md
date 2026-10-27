@@ -1,18 +1,18 @@
 # puppy-mods
 
-Small Claude Code mods kept by the lofi puppy, one folder per mod. This repo is **public**: no private paths, keys or brand docs here.
+lofi puppy 維護的 Claude Code 小 mod，一個 mod 一個資料夾。這個 repo 是**公開的**：不放私人路徑、金鑰或品牌文件。
 
-## Rules
-- **Before drawing any pane, band or picture, read `STYLE.md`** and follow it. A new mod looks like `puppy-pipelines`.
-- Never edit generated files by hand (`puppy-pipelines/hooks/puppy.ts`, `brand.lock.json`); change baibai-brand and sync.
-- Each mod has tests in `<mod>/tests/`; run `claude plugin test <mod>` and `claude plugin validate <mod>` before a PR.
-- Bump the mod's `version` in `.claude-plugin/plugin.json` when it changes.
-- Never push to main; open a PR and let the user merge.
-- Commit messages in English, starting with a verb. PR titles and descriptions in simple English. Reply to the user in Traditional Chinese.
-- Codex reads this file as `AGENTS.md` (a symlink). Codex doesn't change this file or `STYLE.md`; suggest changes in the PR description instead.
+## 規則
+- **畫任何 pane、band 或圖之前，先讀 `STYLE.md`**，照著做。新的 mod 長得跟 `puppy-pipelines` 一樣。
+- 產生出來的檔案（`puppy-pipelines/hooks/puppy.ts`、`brand.lock.json`）絕對不要手改；改 baibai-brand 再同步。
+- 每個 mod 的測試放在 `<mod>/tests/`；開 PR 前先跑 `claude plugin test <mod>` 和 `claude plugin validate <mod>`。
+- mod 有改動時，要調高它 `.claude-plugin/plugin.json` 裡的 `version`。
+- 絕不 push 到 main；開 PR，讓使用者 merge。
+- git commit 訊息用英文，動詞開頭。PR 標題和說明用簡單的英文。回覆使用者用繁體中文。
+- Codex 會把這個檔案當成 `AGENTS.md`（symlink）來讀。Codex 不改這個檔案或 `STYLE.md`；想改的話，在 PR 說明裡提議。
 
-## What the user runs, and how to try a change
-- The user installs these mods from GitHub (`nonbiri1004/puppy-mods`, branch `main`). Claude Code keeps a copy in `~/.claude/plugins/cache/`, so the user runs only what was merged, at the `version` in `plugin.json`. A branch switch in this folder changes nothing they run.
-- A change reaches the user only after its PR is merged **and** its `version` was bumped. Then they run `claude plugin marketplace update puppy-mods` and `claude plugin update <mod>@puppy-mods`, and restart.
-- Work in a worktree (`git worktree add .claude/worktrees/<name> -b <name> origin/main`). Never switch branches in the main folder: other sessions and Codex use it.
-- To try a change before it is merged: start `claude --plugin-dir .claude/worktrees/<name>/<mod>` in a terminal, or set `CLAUDE_CODE_PLUGIN_DIRS` to that folder's absolute path. That copy replaces the installed mod of the same name for that session only. Run `/reload-plugins` after each edit.
+## 使用者實際跑的是什麼，以及怎麼試改動
+- 使用者從 GitHub（`nonbiri1004/puppy-mods`，`main` 分支）安裝這些 mod。Claude Code 會在 `~/.claude/plugins/cache/` 留一份副本，所以使用者只會跑到已經 merge 的內容，版本是 `plugin.json` 裡的 `version`。在這個資料夾切換分支，不會改變他們跑的東西。
+- 改動要等 PR merge **而且** `version` 調高之後，才會到使用者手上。接著他們要執行 `claude plugin marketplace update puppy-mods` 和 `claude plugin update <mod>@puppy-mods`，再重新啟動。
+- 在 worktree 裡工作（`git worktree add .claude/worktrees/<name> -b <name> origin/main`）。絕不在主資料夾切換分支：其他 session 和 Codex 都在用它。
+- merge 之前想試改動：在終端機執行 `claude --plugin-dir .claude/worktrees/<name>/<mod>`，或把 `CLAUDE_CODE_PLUGIN_DIRS` 設成那個資料夾的絕對路徑。那份副本只在那個 session 取代已安裝的同名 mod。每次修改後執行 `/reload-plugins`。
