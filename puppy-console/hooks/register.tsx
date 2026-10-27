@@ -67,8 +67,11 @@ async function loadConversations($: EngineInterface, dir: string, prev: Conversa
 let own: Conversation | null = null
 let writing: Promise<void> = Promise.resolve()
 function save($: EngineInterface, change: (c: Conversation) => Conversation, prompt = '') {
+  // The id is asked for now, not when the write's turn comes: a /clear in between must not
+  // send this turn's recap into the next conversation's file.
+  const asked = $.session.id()
   writing = writing.then(async () => {
-    const [id, home, now] = await Promise.all([$.session.id(), $.env.get('HOME'), $.clock.now()])
+    const [id, home, now] = await Promise.all([asked, $.env.get('HOME'), $.clock.now()])
     if (!home) return
     const path = `${home}/${SESSIONS}/${id}.json`
     if (own?.id !== id) {
