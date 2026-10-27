@@ -1,6 +1,6 @@
 {
   "name": "puppy-todo",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "one quiet to-do pane for every conversation: what this one is for, questions waiting on you, PRs to merge, and what's left",
   "types": "./types/index.d.ts",
   "author": {
