@@ -22,6 +22,11 @@
       "name": "puppy-console",
       "source": "./puppy-console",
       "description": "a pane with one card per production pipeline, read from small status files"
+    },
+    {
+      "name": "puppy-skills",
+      "source": "./puppy-skills",
+      "description": "a pane listing your skills, where each one works, and which ones a schedule uses"
     }
   ]
 }

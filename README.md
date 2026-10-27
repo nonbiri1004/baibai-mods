@@ -1,6 +1,6 @@
 # puppy mods
 
-- **What this is:** small claude code mods kept by the lofi puppy: puppy-bowl, puppy-todo, puppy-console.
+- **What this is:** small claude code mods kept by the lofi puppy: puppy-bowl, puppy-todo, puppy-console, puppy-skills.
 - **What this isn't:** the puppy's apps, games or music; those live in other (private) repos.
 - **Related:** `puppy-console/hooks/puppy.ts` is generated from baibai-brand; baibai-music and ai-video-pipeline write the status files puppy-console shows.
 
@@ -15,6 +15,7 @@ each one does one useful thing and stays out of the way. they're free and open; 
 | [puppy-bowl](puppy-bowl) | the puppy's food bowl above the prompt: how much context is left, and a `compact` button when it's almost empty |
 | [puppy-todo](puppy-todo) | your own to-do list in a pane beside the chat: add, tick, delete. nothing else writes to it |
 | [puppy-console](puppy-console) | a pane with one card per production pipeline (music, videos, …): what it's doing and what waits for you. each pipeline writes a small status file ([format](puppy-console/FORMAT.md)) |
+| [puppy-skills](puppy-skills) | `/my-skills`: a pane with the skills you have, grouped by where they work (everywhere, one repo, a plugin), with a ⏰ on the ones a scheduled task uses |
 
 they all look the same way: quiet cards, warm greys, lowercase words. the rules are in [STYLE.md](STYLE.md).
 
@@ -27,7 +28,7 @@ in a claude code session in your terminal:
 /plugin install puppy-todo --marketplace nonbiri1004/puppy-mods
 ```
 
-(the same for `puppy-console`.)
+(the same for `puppy-console` and `puppy-skills`.)
 
 answer `y` to add the marketplace, then pick a scope (user = every session). it works in the terminal and in the desktop app's code tab once installed.
 
