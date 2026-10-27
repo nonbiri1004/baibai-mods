@@ -11,10 +11,14 @@ export type PrCheck = { state?: PrState; checkedAt: number }
 
 // a lease outlives one slow pass, so a pane that quit mid-pass blocks the rest this long at most
 export const LEASE_MS = 3 * 60_000
+// how long a pane waits after writing the lease before reading it back
+export const LEASE_SETTLE_MS = 300
 // transcripts per scan: a timeout loses one batch, and what came before it is kept
 export const SCAN_BATCH = 8
-// an open PR is asked again after this; a merged or closed one only when someone asks
+// an open PR is asked again after this, a closed one (it can be reopened) after CLOSED_EVERY,
+// a merged one only when someone asks
 export const PR_EVERY = 5 * 60_000
+export const CLOSED_EVERY = 60 * 60_000
 
 function parseObject(text: string): Record<string, unknown> | null {
   try {
@@ -78,16 +82,17 @@ export function parsePrChecks(text: string): Record<string, PrCheck> {
   return out
 }
 
-// never asked: now. merged or closed: it stays so. open, or the last ask failed: after PR_EVERY
+// never asked: now. merged: it stays so. closed: after CLOSED_EVERY. open, or the last ask failed: after PR_EVERY
 export function isPrDue(check: PrCheck | undefined, now: number): boolean {
   if (!check) {
     return true
   }
-  if (check.state && check.state.state !== 'OPEN') {
+  const state = check.state?.state
+  if (state === 'MERGED') {
     return false
   }
 
-  return now - check.checkedAt >= PR_EVERY
+  return now - check.checkedAt >= (state === 'CLOSED' ? CLOSED_EVERY : PR_EVERY)
 }
 
 // a failed ask keeps what github said before, so a PR doesn't blink to unknown
@@ -95,6 +100,20 @@ export function recordPr(was: PrCheck | undefined, state: PrState | null, now: n
   const kept = state ?? was?.state
 
   return kept ? { state: kept, checkedAt: now } : { checkedAt: now }
+}
+
+// puts what github said into `checks` (as read from prs.json just now) and returns the changed
+// ones. an answer older than what another pane wrote meanwhile is left out
+export function recordPrs(checks: Record<string, PrCheck>, got: readonly (readonly [string, PrState | null])[], now: number): Record<string, PrCheck> {
+  const changed: Record<string, PrCheck> = {}
+  for (const [key, state] of got) {
+    const was = checks[key]
+    const next = was && was.checkedAt > now ? was : recordPr(was, state, now)
+    checks[key] = next
+    changed[key] = next
+  }
+
+  return changed
 }
 
 export function chunks<T>(list: readonly T[], size: number): T[][] {

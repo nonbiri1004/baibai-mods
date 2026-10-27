@@ -1,7 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
 import type { Talk } from '../types'
-import { Gate, PR_EVERY, canTake, chunks, isPrDue, mapLimit, mergeReads, parseLease, parsePrChecks, parseReads, recordPr, writeReads } from '../hooks/shared'
+import { CLOSED_EVERY, Gate, PR_EVERY, canTake, chunks, isPrDue, mapLimit, mergeReads, parseLease, parsePrChecks, parseReads, recordPr, recordPrs, writeReads } from '../hooks/shared'
 import type { Read } from '../hooks/shared'
 
 const NOW = Date.parse('2026-10-27T10:00:00Z')
@@ -50,12 +50,14 @@ test('the lease: free when nobody holds it, it ran out, or it is ours', () => {
   expect(parseLease('{"owner":"you"')).toBe(null)
 })
 
-test('PRs: never asked is due; open after PR_EVERY; merged or closed never; a failed ask waits too', () => {
+test('PRs: never asked is due; open after PR_EVERY; closed after CLOSED_EVERY; merged never; a failed ask waits too', () => {
   expect(isPrDue(undefined, NOW)).toBe(true)
   expect(isPrDue({ state: { state: 'OPEN' }, checkedAt: NOW - 60_000 }, NOW)).toBe(false)
   expect(isPrDue({ state: { state: 'OPEN' }, checkedAt: NOW - PR_EVERY }, NOW)).toBe(true)
   expect(isPrDue({ state: { state: 'MERGED' }, checkedAt: 0 }, NOW)).toBe(false)
-  expect(isPrDue({ state: { state: 'CLOSED' }, checkedAt: 0 }, NOW)).toBe(false)
+  // a closed PR can be reopened: asked again, just rarely
+  expect(isPrDue({ state: { state: 'CLOSED' }, checkedAt: NOW - PR_EVERY }, NOW)).toBe(false)
+  expect(isPrDue({ state: { state: 'CLOSED' }, checkedAt: NOW - CLOSED_EVERY }, NOW)).toBe(true)
   // gh failed a minute ago: not asked again every refresh
   expect(isPrDue({ checkedAt: NOW - 60_000 }, NOW)).toBe(false)
 })
@@ -67,6 +69,28 @@ test('PRs: a failed ask keeps what github said before', () => {
   expect(parsePrChecks('{"a":{"checkedAt":3},"b":{"state":{"state":"OPEN"},"checkedAt":4},"c":{}}')).toEqual({
     a: { checkedAt: 3 },
     b: { state: { state: 'OPEN' }, checkedAt: 4 },
+  })
+})
+
+test('PRs: an answer older than what another pane wrote meanwhile is left out', () => {
+  const checks = {
+    newer: { state: { state: 'MERGED' as const }, checkedAt: NOW + 1_000 },
+    older: { state: { state: 'OPEN' as const }, checkedAt: NOW - 60_000 },
+  }
+  const changed = recordPrs(
+    checks,
+    [
+      ['newer', { state: 'OPEN' }],
+      ['older', { state: 'MERGED' }],
+      ['new', null],
+    ],
+    NOW,
+  )
+  expect(checks.newer.state.state).toBe('MERGED')
+  expect(changed).toEqual({
+    newer: { state: { state: 'MERGED' }, checkedAt: NOW + 1_000 },
+    older: { state: { state: 'MERGED' }, checkedAt: NOW },
+    new: { checkedAt: NOW },
   })
 })
 
