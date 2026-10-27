@@ -2,7 +2,7 @@
 
 a pane beside the chat. the first card is your conversations: which ones wait for you, where each stands, and what it asks. then one card per production pipeline: what it is doing now, what waits for you, the last thing it made, and what comes next.
 
-the mod only reads. each pipeline writes one small json file into a folder you pick, and every file there becomes a card. a new pipeline needs no change to the mod: it only starts writing its file. the format is in [FORMAT.md](FORMAT.md).
+the pipeline cards only read. each pipeline writes one small json file into a folder you pick, and every file there becomes a card. a new pipeline needs no change to the mod: it only starts writing its file. the format is in [FORMAT.md](FORMAT.md).
 
 ```
 ┌ music ─────────────────────── running · 1m ago · studio-mac ┐

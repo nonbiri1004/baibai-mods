@@ -1,6 +1,6 @@
 # the status file format
 
-every pipeline writes one small json file into one shared folder. the mod reads every `*.json` in that folder and draws one card per file. the mod never runs a pipeline and never writes into the folder.
+every pipeline writes one small json file into one shared folder. the mod reads every `*.json` in that folder and draws one card per file. the mod never runs a pipeline and never writes a pipeline's file; the only thing it writes is the `sessions/` subfolder (see conversations, below).
 
 ```
 <status folder>/
