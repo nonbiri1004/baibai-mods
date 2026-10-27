@@ -759,7 +759,8 @@ export const register: Register = on => {
     const { Box, Text, Button, Link } = table
     // the phone app draws no field yet
     const Input = 'Input' in table ? table.Input : undefined
-    const v = await read($, view)
+    // a view kept from an older version lacks the newer fields (the session's state outlives a reload)
+    const v: View = { ...EMPTY, ...(await read($, view)) }
     if (v.at === null) {
       return <Text dimColor>{FACES.calm} sniffing around…</Text>
     }
@@ -796,7 +797,7 @@ export const register: Register = on => {
     const hasSvg = isGraphical && 'Svg' in table
     const icon = (name: IconName, alt: string) =>
       hasSvg && 'Svg' in table ? <table.Svg source={iconSvg(name)} alt={alt} width={14} height={14} /> : <Text dimColor>{MARKS[name]}</Text>
-    const toggle = (pick: (was: View) => Partial<View>) => () => update($, view, was => ({ ...was, ...pick(was) }))
+    const toggle = (pick: (was: View) => Partial<View>) => () => update($, view, was => ({ ...EMPTY, ...was, ...pick({ ...EMPTY, ...was }) }))
     // an open to-do: ○ to tick it, its words, its link and age on the right, and ⋯ for the rest.
     // a PR item has ↗ and no tick: github ticks it
     const row = (i: Item) => {
@@ -947,9 +948,12 @@ export const register: Register = on => {
 
                 return (
                   <Box key={`p-${project}`} flexDirection="column">
-                    {fold(`show-p-${project}`, isOpen, project, list.length, () =>
-                      update($, view, was => ({
-                        ...was,
+                    {fold(
+                      `show-p-${project}`,
+                      isOpen,
+                      project,
+                      list.length,
+                      toggle(was => ({
                         openProjects: was.openProjects.includes(project) ? was.openProjects.filter(p => p !== project) : [...was.openProjects, project],
                       })),
                     )}

@@ -154,3 +154,13 @@ test('unfolded: done items can be unticked, tidy-up lists facts and recaps witho
   expect((await ui.find({ type: 'Text', text: /asked you: make the office\?/ }))?.text).toBeTruthy()
   await ui.unmount()
 })
+
+test('Codex #1: a view kept from 0.6.0 (no fold fields) still draws', async ($, on) => {
+  const { isShowingAllAsks, isShowingInProject, openProjects, openItem, ...old } = VIEW
+  on('state.get', () => ({ value: { value: old, version: 1 } }))
+  for (const surface of ['terminal', 'desktop'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect(await ui.find({ type: 'Button', key: 'show-p-home' })).toBeTruthy()
+    await ui.unmount()
+  }
+})
