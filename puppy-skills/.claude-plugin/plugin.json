@@ -1,0 +1,14 @@
+{
+  "name": "puppy-skills",
+  "version": "0.1.0",
+  "description": "a quiet pane listing your claude code skills, where each one works, and which ones a schedule uses",
+  "types": "./types/index.d.ts",
+  "author": {
+    "name": "lofi puppy",
+    "url": "https://github.com/nonbiri1004"
+  },
+  "homepage": "https://github.com/nonbiri1004/puppy-mods/tree/main/puppy-skills",
+  "repository": "https://github.com/nonbiri1004/puppy-mods",
+  "license": "MIT",
+  "keywords": ["skills", "pane", "puppy", "lofi"]
+}
