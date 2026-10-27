@@ -38,7 +38,11 @@ async function writeItem($: EngineInterface, item: Item): Promise<void> {
 
 // reads the list again: when the pane opens, on refresh, and after a turn while it is up.
 // nothing else runs: no timer, no transcripts, no github
+// each read is numbered; a slower, older read that ends after a newer one is dropped
+let loads = 0
+
 async function load($: EngineInterface): Promise<void> {
+  const mine = ++loads
   const notes: string[] = []
   const items = await readItems($).catch(() => {
     notes.push('could not read ~/.claude/todo/items')
@@ -46,6 +50,9 @@ async function load($: EngineInterface): Promise<void> {
     return null
   })
   const at = await $.clock.now()
+  if (mine !== loads) {
+    return
+  }
   await update($, view, was => ({ ...EMPTY, ...was, items: items ?? was.items, at, notes }))
 }
 
