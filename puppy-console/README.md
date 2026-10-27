@@ -14,7 +14,7 @@ the pipeline cards only read. each pipeline writes one small json file into a fo
 └─────────────────────────────────────────────────────────────┘
 ```
 
-- the **conversations** card is always first. each conversation writes a short file about itself into `<status folder>/sessions/` when a turn starts and ends: its first line as a name, the folder it runs in, and the recap the desktop app's next-step box shows (in the terminal, the answer's first line). the ones that ask you something are shown with the question; the rest get one quiet line. a conversation leaves the card three days after its last turn. turn the writing off with **conversations** in `/config`.
+- the **conversations** card is always first. each conversation writes a short file about itself into `~/.claude/console/sessions/` when a turn starts and ends. that folder is on this computer only, never the status folder, so what you typed is not synced anywhere: its first line as a name, the folder it runs in, and the recap the desktop app's next-step box shows (in the terminal, the answer's first line). the ones that ask you something are shown with the question; the rest get one quiet line. a conversation leaves the card three days after its last turn. turn the writing off with **conversations** in `/config`.
 - pipeline cards that wait for you come first, then errors, then running, then idle.
 - when a card turns `waiting`, `error` or quiet, or a waiting card gets a new item, a short notice shows in the corner (once, not every minute). turn it off with **notices** in `/config`.
 - a pipeline that promised to write every few minutes (`stale_after_sec`) and went quiet gets a "quiet" mark, so a sleeping computer doesn't look like it is still working.

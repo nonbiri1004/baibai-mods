@@ -1,6 +1,6 @@
 # the status file format
 
-every pipeline writes one small json file into one shared folder. the mod reads every `*.json` in that folder and draws one card per file. the mod never runs a pipeline and never writes a pipeline's file; the only thing it writes is the `sessions/` subfolder (see conversations, below).
+every pipeline writes one small json file into one shared folder. the mod reads every `*.json` in that folder and draws one card per file. the mod never runs a pipeline and never writes into the folder. (it keeps its own conversation files elsewhere; see conversations, below.)
 
 ```
 <status folder>/
@@ -62,7 +62,7 @@ the mod draws these when `pipeline` matches; anything else in `detail` is ignore
 
 ## conversations
 
-the mod itself writes one more kind of file, one per conversation, in `<status folder>/sessions/<session id>.json`. only that conversation writes its file. the pane reads them for the first card; they are not pipeline cards, and a file there that does not parse is left out without a word (the conversation writes it again at its next turn).
+the mod itself writes one more kind of file, one per conversation, in `~/.claude/console/sessions/<session id>.json`: on this computer only, never in the status folder, because it holds what you typed. only that conversation writes its file, one write after another, and never while holding up a turn. the pane reads them for the first card. a file there that does not parse (caught halfway through a write) keeps what the last read had.
 
 ```json
 {
@@ -78,4 +78,4 @@ the mod itself writes one more kind of file, one per conversation, in `<status f
 }
 ```
 
-`state` is `running` (a turn is going), `waiting` (the last turn asked you something), `done` or `error`. a `running` file older than 30 minutes is shown as `done`: the conversation closed mid-turn. files older than three days are not shown; they stay in the folder.
+`state` is `running` (a turn is going), `waiting` (the last turn asked you something), `done` or `error`. a `running` file older than 30 minutes is shown as `done`: the conversation closed mid-turn. files older than three days are not read or shown; they stay in the folder.

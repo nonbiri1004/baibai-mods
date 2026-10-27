@@ -3,9 +3,10 @@
 // tests need no engine.
 import type { Conversation, ConversationState } from '../types'
 
-// Files in `<status folder>/sessions/`. The pane shows a conversation for this long after its
+// Under the home folder, on this computer only: what you typed and the recaps never go into
+// the status folder, which may be synced. The pane shows a conversation for this long after its
 // last turn, so an archived one leaves by itself.
-export const SESSIONS = 'sessions'
+export const SESSIONS = '.claude/console/sessions'
 export const KEEP_MS = 3 * 24 * 3_600_000
 // A "running" file older than this was left by a conversation that closed mid-turn.
 export const RUNNING_MS = 30 * 60_000
@@ -36,19 +37,11 @@ export function nameOf(messages: Message[]): string {
   return first ? oneLine(plain(first.text), 60) : 'new conversation'
 }
 
-// The recap of the turn that just ended. The desktop app's wrap_up already says what is now
-// true and what waits on the person; without one, the first lines of the answer.
-export function recapOf(messages: Message[], answer: string): { recap: string; ask: string | null } {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i]!
-    if (isPrompt(m)) break
-    for (const use of [...m.toolUses].reverse()) {
-      if (!/(^|__)wrap_up$/.test(use.tool)) continue
-      const recap = str(use.input.recap)
-      if (recap) return { recap: oneLine(recap, 300), ask: str(use.input.ask) ? oneLine(str(use.input.ask)!, 120) : null }
-    }
-  }
-  return { recap: oneLine(answer, 200), ask: null }
+// The desktop app's wrap_up tool: its recap says what is now true, its ask what waits on you.
+export const isWrapUp = (tool: string) => /(^|__)wrap_up$/.test(tool)
+export function wrapOf(input: Record<string, unknown>): { recap: string; ask: string | null } | null {
+  const recap = str(input.recap)
+  return recap ? { recap: oneLine(recap, 300), ask: str(input.ask) ? oneLine(str(input.ask)!, 120) : null } : null
 }
 
 // Only what the card needs is checked; anything else in the file is left alone.

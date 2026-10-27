@@ -4,7 +4,7 @@ import type { EngineInterface, Register } from 'claude-code'
 import type { Conversation, Problem, Snapshot, Status } from '../types'
 import { detailLines, picture, W } from './draw'
 import { ago, alerts, expandHome, isStale, parseStatus, sortCards, textBar, titleOf } from './format'
-import { folderName, nameOf, oneLine, parseConversation, plain, recapOf, recent, SESSIONS, shownState } from './sessions'
+import { folderName, isWrapUp, KEEP_MS, nameOf, oneLine, parseConversation, plain, recent, SESSIONS, shownState, wrapOf } from './sessions'
 
 const PANE = 'puppy-console'
 const REFRESH_MS = 60_000
@@ -17,14 +17,14 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 
 // Every *.json in the folder is one card. A file that does not parse becomes a problem line,
 // never a missing card without a word: the writer may be halfway through, or on an old format.
-export async function loadFolder($: EngineInterface, dir: string): Promise<Snapshot> {
+export async function loadFolder($: EngineInterface, dir: string): Promise<Omit<Snapshot, 'conversations'>> {
   const loadedAt = await $.clock.now()
-  if (!dir) return { dir, cards: [], conversations: [], problems: [], dirError: 'no status folder set', loadedAt }
+  if (!dir) return { dir, cards: [], problems: [], dirError: 'no status folder set', loadedAt }
   let entries
   try {
     entries = await $.fs.list(dir)
   } catch (err) {
-    return { dir, cards: [], conversations: [], problems: [], dirError: errorText(err), loadedAt }
+    return { dir, cards: [], problems: [], dirError: errorText(err), loadedAt }
   }
   const cards: Status[] = []
   const problems: Problem[] = []
@@ -38,55 +38,69 @@ export async function loadFolder($: EngineInterface, dir: string): Promise<Snaps
       problems.push({ file: f.name, reason: errorText(err) })
     }
   }
-  const conversations = entries.some(f => f.kind === 'dir' && f.name === SESSIONS)
-    ? recent(await loadConversations($, `${dir}/${SESSIONS}`), loadedAt)
-    : []
-  return { dir, cards: sortCards(cards), conversations, problems, dirError: null, loadedAt }
+  return { dir, cards: sortCards(cards), problems, dirError: null, loadedAt }
 }
 
-// A conversation's file that does not parse is left out without a word: each is rewritten
-// at the conversation's next turn, and a list of skipped ones would only be noise.
-async function loadConversations($: EngineInterface, dir: string): Promise<Conversation[]> {
+// The conversations' files. A file older than the card shows is not read at all, so the folder
+// can grow without the refresh slowing down. One that does not parse (a write caught halfway)
+// keeps what the last read had, and is read again at the next refresh.
+async function loadConversations($: EngineInterface, dir: string, prev: Conversation[], now: number): Promise<Conversation[]> {
   const out: Conversation[] = []
   for (const f of await $.fs.list(dir).catch(() => [])) {
     if (f.kind !== 'file' || !f.name.endsWith('.json') || f.name.startsWith('.')) continue
+    if (f.mtimeMs && now - f.mtimeMs > KEEP_MS) continue
     try {
       const c = parseConversation(await $.fs.read(`${dir}/${f.name}`))
       if (`${c.id}.json` === f.name) out.push(c)
-    } catch {}
+    } catch {
+      const kept = prev.find(c => `${c.id}.json` === f.name)
+      if (kept) out.push(kept)
+    }
   }
-  return out
+  return recent(out, now)
 }
 
-// This conversation's own file, `<status folder>/sessions/<session id>.json`. One writer per
-// file: only this conversation writes it. The last recap is kept here so the file of a turn
-// that is running still says where the conversation stood.
-let lastRecap = ''
-async function writeOwn($: EngineInterface, setting: string, fields: Pick<Conversation, 'state' | 'recap' | 'ask'>, prompt = '') {
-  const dir = expandHome(setting.trim(), await $.env.get('HOME'))
-  if (!dir) return
-  const [id, root, messages, now] = await Promise.all([$.session.id(), $.session.root(), $.session.messages(), $.clock.now()])
-  const title = nameOf(messages)
-  const file: Conversation = {
-    format: 'session-status',
-    version: 1,
-    id,
-    updated: new Date(now).toISOString(),
-    title: title === 'new conversation' && plain(prompt) ? oneLine(plain(prompt), 60) : title,
-    project: folderName(root),
-    ...fields,
-  }
-  await $.fs.write(`${dir}/${SESSIONS}/${id}.json`, `${JSON.stringify(file, null, 2)}\n`)
+// This conversation's own file, `~/.claude/console/sessions/<session id>.json`; only this
+// conversation writes it. `own` is what the file last said, kept by session id: /clear gives a
+// new id without a new session.start, and a reload starts the module over and reads it back.
+// Writes go one after another and never hold up the turn: a turn's hooks queue them and go on.
+let own: Conversation | null = null
+let writing: Promise<void> = Promise.resolve()
+function save($: EngineInterface, change: (c: Conversation) => Conversation, prompt = '') {
+  writing = writing.then(async () => {
+    const [id, home, now] = await Promise.all([$.session.id(), $.env.get('HOME'), $.clock.now()])
+    if (!home) return
+    const path = `${home}/${SESSIONS}/${id}.json`
+    if (own?.id !== id) {
+      own = await $.fs.read(path).then(parseConversation).catch(() => null)
+      if (!own) {
+        const [messages, root] = await Promise.all([$.session.messages(), $.session.root()])
+        const title = nameOf(messages)
+        own = {
+          format: 'session-status', version: 1, id, updated: '', state: 'running',
+          title: title === 'new conversation' && plain(prompt) ? oneLine(plain(prompt), 60) : title,
+          project: folderName(root), recap: '', ask: null,
+        }
+      }
+    }
+    own = change({ ...own, updated: new Date(now).toISOString() })
+    await $.fs.write(path, `${JSON.stringify(own, null, 2)}\n`)
+  }).catch(() => {})
 }
 
 // One refresh at a time: the timer and the button share the running one,
 // so an older read can never finish last and overwrite a newer one.
 let running: Promise<void> | null = null
-function refresh($: EngineInterface, setting: string, isNotifying: boolean): Promise<void> {
+function refresh($: EngineInterface, setting: string, isNotifying: boolean, isShowing: boolean): Promise<void> {
   running ??= (async () => {
-    const dir = expandHome(setting.trim(), await $.env.get('HOME'))
+    const home = await $.env.get('HOME')
+    const dir = expandHome(setting.trim(), home)
     const prev = await read($, snapshot)
-    const next = await loadFolder($, dir)
+    const folder = await loadFolder($, dir)
+    const conversations = isShowing && home
+      ? await loadConversations($, `${home}/${SESSIONS}`, prev?.conversations ?? [], folder.loadedAt)
+      : []
+    const next: Snapshot = { ...folder, conversations }
     await update($, snapshot, () => next)
     // A toast shows in this conversation only, for ten seconds; each open conversation tells its own.
     if (isNotifying) for (const line of alerts(prev, next)) $.ui.toast(line, { timeoutMs: 10_000 })
@@ -118,35 +132,39 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'console', description: 'Open the pipeline cards' })
-    void refresh($, setting, isNotifying)
+    void refresh($, setting, isNotifying, isWriting)
     // Like setInterval in a component's mount: each tick reads the folder again and the pane redraws.
-    $.clock.every(REFRESH_MS, () => refresh($, setting, isNotifying))
+    $.clock.every(REFRESH_MS, () => refresh($, setting, isNotifying, isWriting))
     return next(e)
   })
 
   // The main loop only: a subagent's turns are part of this conversation's turn.
+  // `wrap` is this turn's wrap_up, caught as it is called, so an older turn's is never used.
+  let wrap: ReturnType<typeof wrapOf> = null
   on('turn.start', async ($, e, next) => {
     if (isWriting && e.agentId === undefined) {
-      await writeOwn($, setting, { state: 'running', recap: lastRecap, ask: null }, e.text).catch(() => {})
+      wrap = null
+      save($, c => ({ ...c, state: 'running', ask: null }), e.text)
     }
     return next(e)
   })
 
+  on('tool.call', async ($, e, next) => {
+    if (isWriting && e.agentId === undefined && isWrapUp(e.tool)) wrap = wrapOf(e as Record<string, unknown>) ?? wrap
+    return next(e)
+  })
+
   on('turn.complete', async ($, e, next) => {
-    const result = await next(e)
     if (isWriting && e.agentId === undefined) {
-      try {
-        const { recap, ask } = recapOf(await $.session.messages(), e.answer)
-        lastRecap = recap || lastRecap
-        const state = e.reason === 'error' || e.reason === 'refusal' ? 'error' : ask ? 'waiting' : 'done'
-        await writeOwn($, setting, { state, recap: lastRecap, ask })
-      } catch {}
+      const w = wrap
+      const state = e.reason === 'error' || e.reason === 'refusal' ? 'error' : w?.ask ? 'waiting' : 'done'
+      save($, c => ({ ...c, state, recap: w?.recap || oneLine(e.answer, 200) || c.recap, ask: w?.ask ?? null }))
     }
-    return result
+    return next(e)
   })
 
   on('command.run', { command: 'console' }, async $ => {
-    await refresh($, setting, isNotifying)
+    await refresh($, setting, isNotifying, isWriting)
     await $.ui.open({ id: PANE, title: 'console' })
     return { text: 'pipeline cards opened.' }
   })
@@ -233,7 +251,7 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="row" justifyContent="space-between">
           <Text dimColor>checked {ago(now - snap.loadedAt)}</Text>
-          <Button key="refresh" label="refresh" hotkey="r" onPress={() => refresh($, setting, isNotifying)} />
+          <Button key="refresh" label="refresh" hotkey="r" onPress={() => refresh($, setting, isNotifying, isWriting)} />
         </Box>
         {snap.dirError && (
           <Box flexDirection="column">

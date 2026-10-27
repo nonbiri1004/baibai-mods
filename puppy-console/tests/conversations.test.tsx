@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { KEEP_MS, nameOf, parseConversation, plain, recapOf, recent, RUNNING_MS, shownState } from '../hooks/sessions'
+import { isWrapUp, KEEP_MS, nameOf, parseConversation, plain, recent, RUNNING_MS, shownState, wrapOf } from '../hooks/sessions'
 
 const T = Date.parse('2026-10-27T12:00:00.000Z')
 const user = (text: string) => ({ role: 'user' as const, text, toolUses: [] })
@@ -21,15 +21,12 @@ test('the name is the first thing the person typed, without the app\'s tags', ()
   expect([...nameOf([user('x'.repeat(200))])]).toHaveLength(60)
 })
 
-test('the recap is this turn\'s wrap_up; an older one is not used', () => {
-  const turn = [
-    user('first'), said('', wrapUp({ recap: 'old recap', ask: 'old ask?' })),
-    user('second'), said('working', { tool: 'Bash', input: {} }), results,
-    said('', wrapUp({ recap: 'Card added. Tests pass.', ask: 'Open a PR?' })), said('The card is in.'),
-  ]
-  expect(recapOf(turn, 'The card is in.')).toEqual({ recap: 'Card added. Tests pass.', ask: 'Open a PR?' })
-  // no wrap_up this turn (the terminal, a short answer): the answer's first line, nothing asked
-  expect(recapOf([...turn, user('third'), said('Yes.\nmore')], 'Yes.\nmore')).toEqual({ recap: 'Yes.', ask: null })
+test('a wrap_up gives the recap and the question', () => {
+  expect(isWrapUp('mcp__ccd_turn__wrap_up')).toBe(true)
+  expect(isWrapUp('wrap_up_notes')).toBe(false)
+  expect(wrapOf({ recap: 'Card added.\nmore', ask: 'Open a PR?' })).toEqual({ recap: 'Card added.', ask: 'Open a PR?' })
+  expect(wrapOf({ recap: 'Done.' })).toEqual({ recap: 'Done.', ask: null })
+  expect(wrapOf({ ask: 'x?' })).toBeNull()
 })
 
 test('a conversation file parses; a wrong one throws', () => {
@@ -63,17 +60,17 @@ const entry = (name: string, kind: 'file' | 'dir' = 'file') => ({ name, kind, si
 
 test('the conversations card comes first, with what each one asks', { options: { status_dir: '/s' } }, async ($, on) => {
   const files: Record<string, string> = {
-    '/s/sessions/a.json': conv({ id: 'a', state: 'waiting', title: 'console sessions', recap: 'Card added.', ask: 'Open a PR?' }),
-    '/s/sessions/b.json': conv({ id: 'b', state: 'done', title: 'fix the bowl' }),
-    '/s/sessions/c.json': conv({ id: 'x' }),   // name and id disagree: left out
+    '/home/me/.claude/console/sessions/a.json': conv({ id: 'a', state: 'waiting', title: 'console sessions', recap: 'Card added.', ask: 'Open a PR?' }),
+    '/home/me/.claude/console/sessions/b.json': conv({ id: 'b', state: 'done', title: 'fix the bowl' }),
+    '/home/me/.claude/console/sessions/c.json': conv({ id: 'x' }),   // name and id disagree: left out
     '/s/music.json': JSON.stringify({ format: 'pipeline-status', version: 1, pipeline: 'music', updated: new Date(T).toISOString(), state: 'waiting', headline: '05 · 42/70' }),
   }
   mock.env(on, { HOME: '/home/me' })
   mock.clock(on, { now: T + 60_000 })
   on('fs.list', (_, e) => ({
-    value: (e as { path: string }).path === '/s/sessions'
+    value: (e as { path: string }).path === '/home/me/.claude/console/sessions'
       ? ['a.json', 'b.json', 'c.json'].map(n => entry(n))
-      : [entry('music.json'), entry('sessions', 'dir')],
+      : [entry('music.json')],
   }))
   on('fs.read', (_, e) => {
     const text = files[(e as { path: string }).path]
@@ -98,45 +95,70 @@ test('the conversations card comes first, with what each one asks', { options: {
   }
 })
 
+const wrapUpCall = (input: Record<string, unknown>) =>
+  ({ tool: 'mcp__ccd_turn__wrap_up', tool_use_id: 'w', ...input }) as Record<string, unknown>
+
 test('a turn writes this conversation\'s own file: running, then where it stands', { options: { status_dir: '~/status' } }, async ($, on) => {
   const written: Record<string, string> = {}
-  let messages: (ReturnType<typeof user> | ReturnType<typeof said>)[] = [user('<system-reminder>x</system-reminder>add the card')]
+  let id = 'abc'
   mock.env(on, { HOME: '/home/me' })
-  mock.clock(on, { now: T })
+  const clock = mock.clock(on, { now: T })
   on('fs.list', () => ({ value: [] }))
+  on('fs.read', (_, e) => {
+    const text = written[(e as { path: string }).path]
+    if (text == null) throw new Error('missing')
+    return { value: text }
+  })
   on('fs.write', (_, e) => { const { path, text } = e as { path: string; text: string }; written[path] = text; return { value: undefined } })
-  on('session.id', () => ({ value: 'abc' }))
+  on('session.id', () => ({ value: id }))
   on('session.root', () => ({ value: '/Users/me/dev/puppy-mods' }))
-  on('session.messages', () => ({ value: messages as never }))
+  on('session.messages', () => ({ value: [user('<system-reminder>x</system-reminder>add the card')] as never }))
+  on('tool.call', () => ({ result: null }) as never)
   on('command.register', () => ({ value: { command: 'console' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
   on('turn.start', (_, e) => ({ turnId: e.turnId }))
   on('turn.complete', (_, e) => ({ text: e.answer }))
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  const file = () => parseConversation(written[`/home/me/.claude/console/sessions/${id}.json`]!)
 
-  const path = '/home/me/status/sessions/abc.json'
   await $.turn.start({ text: 'add the card', turnId: 't1' })
-  expect(parseConversation(written[path]!)).toMatchObject({ state: 'running', title: 'add the card', project: 'puppy-mods', recap: '' })
+  await clock.settle()
+  expect(file()).toMatchObject({ state: 'running', title: 'add the card', project: 'puppy-mods', recap: '' })
 
-  messages = [...messages, said('', wrapUp({ recap: 'Card added.', ask: 'Open a PR?' }))]
+  await $.tool.call(wrapUpCall({ recap: 'Card added.', ask: 'Open a PR?' }) as never)
   await $.turn.complete({ answer: 'done', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
-  expect(parseConversation(written[path]!)).toMatchObject({ state: 'waiting', recap: 'Card added.', ask: 'Open a PR?' })
+  await clock.settle()
+  expect(file()).toMatchObject({ state: 'waiting', recap: 'Card added.', ask: 'Open a PR?' })
 
   // the next turn starts: running, still saying where it stood
   await $.turn.start({ text: 'yes', turnId: 't2' })
-  expect(parseConversation(written[path]!)).toMatchObject({ state: 'running', recap: 'Card added.', ask: null })
+  await clock.settle()
+  expect(file()).toMatchObject({ state: 'running', recap: 'Card added.', ask: null })
 
-  // a subagent's turn is not this conversation's
-  delete written[path]
+  // a turn with no wrap_up of its own (a continuation, the terminal) never reuses the old one
+  await $.turn.complete({ answer: 'Pushed.\nmore', durationMs: 1, isAborted: false, turnId: 't2', reason: 'answer' })
+  await clock.settle()
+  expect(file()).toMatchObject({ state: 'done', recap: 'Pushed.', ask: null })
+
+  // a subagent's wrap_up and turns are not this conversation's
+  await $.tool.call({ ...wrapUpCall({ recap: 'sub', ask: 'sub?' }), agentId: 'sub' } as never)
   await $.turn.complete({ answer: 'x', durationMs: 1, isAborted: false, turnId: 't3', reason: 'answer', agentId: 'sub' })
-  expect(written[path]).toBeUndefined()
+  await clock.settle()
+  expect(file()).toMatchObject({ state: 'done', recap: 'Pushed.' })
+
+  // /clear: a new id, a new file, nothing carried over
+  id = 'def'
+  await $.turn.start({ text: 'new topic', turnId: 't4' })
+  await clock.settle()
+  expect(file()).toMatchObject({ id: 'def', state: 'running', recap: '' })
 })
 
-test('conversations off: nothing is written', { options: { status_dir: '/s', conversations: 'off' } }, async ($, on) => {
+test('conversations off: nothing is written and no card is drawn', { options: { status_dir: '/s', conversations: 'off' } }, async ($, on) => {
   let writes = 0
+  const lists: string[] = []
   mock.env(on, { HOME: '/home/me' })
-  mock.clock(on, { now: T })
-  on('fs.list', () => ({ value: [] }))
+  const clock = mock.clock(on, { now: T })
+  on('fs.list', (_, e) => { lists.push((e as { path: string }).path); return { value: [] } })
   on('fs.write', () => { writes++; return { value: undefined } })
   on('command.register', () => ({ value: { command: 'console' } }))
   on('session.start', (_, e) => ({ cwd: e.cwd }))
@@ -145,5 +167,7 @@ test('conversations off: nothing is written', { options: { status_dir: '/s', con
   await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
   await $.turn.start({ text: 'hi', turnId: 't1' })
   await $.turn.complete({ answer: 'hi', durationMs: 1, isAborted: false, turnId: 't1', reason: 'answer' })
+  await clock.settle()
   expect(writes).toBe(0)
+  expect(lists.some(p => p.includes('.claude/console'))).toBe(false)
 })

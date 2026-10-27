@@ -37,7 +37,7 @@
     "conversations": {
       "type": "string",
       "title": "Conversations",
-      "description": "on: each conversation writes a short file about itself into <status folder>/sessions/ after every turn, and the pane shows them first. off: it writes nothing.",
+      "description": "on: each conversation writes a short file about itself into ~/.claude/console/sessions/ (this computer only) after every turn, and the pane shows them first. off: it writes nothing.",
       "default": "on",
       "options": [
         "on",
