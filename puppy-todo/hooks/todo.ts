@@ -391,3 +391,41 @@ export function ago(now: number, ms: number): string {
 
   return hours < 48 ? `${hours}h` : `${Math.round(hours / 24)}d`
 }
+
+// an open item older than this gets its age in color, and counts in the warning at the top
+export const STALE_DAYS = 7
+
+// when an item was written: createdAt, else the time in its id (20261024-1432-…, local time); NaN when neither tells
+export function bornAt(item: Item): number {
+  const at = Date.parse(item.createdAt)
+  if (!Number.isNaN(at)) {
+    return at
+  }
+  const m = /^(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})/.exec(item.id)
+  if (!m) {
+    return Number.NaN
+  }
+  const [y = 0, mo = 1, d = 1, hh = 0, mm = 0] = m.slice(1).map(Number)
+
+  return new Date(y, mo - 1, d, hh, mm).getTime()
+}
+
+// by whole days as the pane shows them (ago rounds), so every "8d" is old and no "7d" is
+export function isStale(item: Item, now: number): boolean {
+  const at = bornAt(item)
+
+  return !Number.isNaN(at) && Math.round((now - at) / DAY) > STALE_DAYS
+}
+
+// a link in few columns, for the terminal: github/owner/repo/pull/16 → #16, else the host
+export function shortLink(url: string): string {
+  const gh = /^https:\/\/github\.com\/[^/]+\/[^/]+\/(?:pull|issues)\/(\d+)/.exec(url)
+  if (gh) {
+    return `#${gh[1]}`
+  }
+  try {
+    return new URL(url).host
+  } catch {
+    return 'link'
+  }
+}

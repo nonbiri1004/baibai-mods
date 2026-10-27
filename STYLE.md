@@ -23,7 +23,8 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
 - Lists inside a card get a dim label above each group, not another border. One border level only.
 - Extra lists (done items, old things) stay folded below the cards: a dim button `▸ done 3`, `▾` when open.
 - Long text: on the terminal, clip by columns (a card has 4 fewer than the pane: border and padding). On the desktop, give the `Text` `wrap="truncate-end"` and let it cut at the edge; counting columns there cuts too early, most of all for Chinese. In a row, the Box around that Text needs `flexShrink={1} minWidth={0}`; without `minWidth={0}` it never gets narrower than its text and runs past the card.
-- Rows with a mark in front (☐, ↗, ✓): put the mark in a `<Box width={3}>`, so the words line up.
+- Rows with a mark in front (○, ↗, ✓): put the mark in a `<Box width={3} flexShrink={0}>`, so the words line up.
+- Facts on the right of a row (a state, a link, an age) sit in one `<Box flexShrink={0}>`: they never wrap, the words in the middle give way. On the terminal a `Link` prints its whole address, so show a short name there (`#16`).
 
 ## Colors
 
@@ -33,10 +34,13 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
   - `success`: something is working right now.
   - Everything else: `dimColor`, or the normal text color.
 - One color word per line at most. Color the word that matters (the state, the label), not the whole line.
+- No color per project or per group: groups are told apart by cards and names, in greys. Something old or important gets the full text color, bold, and a small mark, not a new color.
+- A grey bar down a list's left edge is a dim `▎` on each row, not a Box with a `backgroundColor`: a theme's grey fill turns white in 16-color themes.
 
 ## Pictures (SVG)
 
 - Only where the surface has `Svg` (the desktop app). The terminal gets the same facts as text lines: never drop a fact because there is no picture.
+- Small icons are 14×14 pixel drawings in greys only, like lofipuppy.app's `PixelIcon` (see `puppy-todo/hooks/icons.ts`); the terminal shows a text mark in their place.
 - Warm greys, light by day and dark by night with `prefers-color-scheme`. Copy the palette from `puppy-pipelines/hooks/draw.ts` (`--card`, `--line`, `--text`, `--muted`, and the soft `--ok` / `--listen` / `--reject`).
 - Pixel art keeps `shape-rendering="crispEdges"`.
 - The puppy's drawing comes from baibai-brand (generated, see `brand.lock.json`). Never draw or edit the puppy by hand here.

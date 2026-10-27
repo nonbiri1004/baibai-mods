@@ -4,6 +4,8 @@ a to-do pane beside the chat, shared by every conversation. when you come back t
 
 ```
 •ᴥ• 3 to-do · 1 asked you                 refresh
+↗ 1 waiting for merge · ○ 2 open
+▪ 1 item older than 7 days
 ╭─────────────────────────────────────────────╮
 │ notes app                            my-app │
 │ last: the list works; offline sync is next. │
@@ -18,11 +20,12 @@ a to-do pane beside the chat, shared by every conversation. when you come back t
 │ [add a to-do…]                              │
 │                                             │
 │ this conversation                           │
-│ ☐ test offline sync                         │
-│                                             │
-│ my-app                                      │
-│ ☐ write the retry docs                      │
-│ ↗ merge the notes PR · waiting for merge    │
+│ ▎ ○ test offline sync                    2h │
+╰─────────────────────────────────────────────╯
+╭─────────────────────────────────────────────╮
+│ my-app                                    2 │
+│ ▎ ○ write the retry docs              ▪ 9d  │
+│ ▎ ↗ merge the notes PR  waiting for merge … │
 ╰─────────────────────────────────────────────╯
 ▸ done 8
 ▸ tidy up: 32 of 80 conversations have nothing open
@@ -31,12 +34,18 @@ looked at 14:05
 
 it looks like the other puppy mods: one card per part ([style](../STYLE.md)).
 
+how to read it:
+
+- the line under the puppy counts what waits: `↗` PRs waiting for merge, `○` open to-dos. when items are older than 7 days, a line under it says how many.
+- each project is its own card, with a grey bar down the left and the count on the right. greys only, like lofipuppy.app: no color per project.
+- on the right of a row: how old it is (`2h`, `9d`). after 7 days the age turns bold with a small mark (an hourglass on the desktop, `▪` in the terminal). the age comes from `createdAt`, or from the time at the start of the id.
+
 it opens by itself when a session starts. `/todo` opens it again; `/todo <text>` adds a to-do for this conversation.
 
 ## what you do
 
 - **add**: the field at the top of the list, or `/todo <text>`.
-- **tick** ☐ when it's done. tick ☑ under `done` to open it again.
+- **tick** ○ when it's done. tick ☑ under `done` to open it again.
 - **✕** to delete something you won't do. on the desktop it shows when the pointer is on the row.
 - **tidy up**: when the sidebar gets long, unfold the last row. it lists every open conversation with what is still open in it and its last recap, so you can archive from the sidebar without opening each one.
 

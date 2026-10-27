@@ -3,11 +3,13 @@ import { expect, test } from 'claude-code/testing'
 import type { Item, PrState, Talk } from '../types'
 import {
   FACES,
+  bornAt,
   byProject,
   declareDone,
   deleteItem,
   isHere,
   isOpenItem,
+  isStale,
   mood,
   newId,
   newestTalks,
@@ -22,6 +24,7 @@ import {
   recentAsks,
   reopen,
   saying,
+  shortLink,
   shown,
 } from '../hooks/todo'
 
@@ -212,4 +215,21 @@ test('Codex #4: a transcript that could not be read is no transcript, not an emp
   expect(gone?.isUnread).toBe(true)
   expect(fine?.isUnread).toBe(undefined)
   expect(fine?.title).toBe('t')
+})
+
+test('an item is old after 7 days, by createdAt or else by the time in its id', () => {
+  expect(bornAt(item({ createdAt: '2026-10-20T00:00:00Z' }))).toBe(Date.parse('2026-10-20T00:00:00Z'))
+  // the id is local time, like newId writes it
+  expect(bornAt(item({ id: '20261020-0930-k3f9' }))).toBe(new Date(2026, 9, 20, 9, 30).getTime())
+  expect(Number.isNaN(bornAt(item({ id: 'hand-written' })))).toBe(true)
+  expect(isStale(item({ createdAt: '2026-10-16T14:00:00Z' }), NOW)).toBe(true)
+  expect(isStale(item({ createdAt: '2026-10-18T14:00:00Z' }), NOW)).toBe(false)
+  // no time known: not called old
+  expect(isStale(item({ id: 'hand-written' }), NOW)).toBe(false)
+})
+
+test('a link gets short for the terminal', () => {
+  expect(shortLink('https://github.com/you/app/pull/16')).toBe('#16')
+  expect(shortLink('https://github.com/you/app/issues/3#top')).toBe('#3')
+  expect(shortLink('https://docs.example.com/a/b')).toBe('docs.example.com')
 })
