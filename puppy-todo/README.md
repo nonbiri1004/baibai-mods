@@ -13,7 +13,7 @@ your own to-do list, in a quiet pane beside the chat. you add things, tick them,
 ▸ done 2
 ```
 
-on the desktop, the puppy moves beside the header: sitting and blinking while to-dos are open, sleeping when none are open. in the terminal, it is a still puppy in block characters, 34 columns × 13 rows, above the header. it is left out when the pane is shorter than 26 rows.
+on the desktop, the puppy moves beside the header: sitting and blinking while to-dos are open, sleeping when none are open. in the terminal, it is a still puppy in block characters, 34 columns × 13 rows, above the header. it is left out when the pane is shorter than 26 rows or narrower than 34 columns.
 
 it looks like the other puppy mods: warm greys, one card ([style](../STYLE.md)).
 

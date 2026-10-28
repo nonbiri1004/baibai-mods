@@ -8,6 +8,8 @@ import type { Card, Task } from './skills'
 
 const PANE = 'puppy-skills'
 const PUPPY_MIN_ROWS = 26
+// the block frame is 34 columns; narrower, each row wraps and breaks the drawing
+const PUPPY_COLUMNS = 34
 // how long a first sentence may run (Latin columns; a CJK character is two) where rows wrap
 const SENTENCE = 110
 
@@ -272,7 +274,7 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        {!hasSvg && e.props.scroll.bodyRows >= PUPPY_MIN_ROWS && (
+        {!hasSvg && e.props.scroll.bodyRows >= PUPPY_MIN_ROWS && e.props.bodyColumns >= PUPPY_COLUMNS && (
           <Box key="puppy" flexDirection="column">
             {stillBlocks().map((runs, i) => (
               <Text key={`puppy-${i}`}>

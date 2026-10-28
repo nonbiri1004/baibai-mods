@@ -7,6 +7,8 @@ import { deleteItem, listOf, newId, parseItem, projectOf, reopen, tick } from '.
 
 const PANE = 'puppy-todo'
 const PUPPY_MIN_ROWS = 26
+// the block frame is 34 columns; narrower, each row wraps and breaks the drawing
+const PUPPY_COLUMNS = 34
 
 const EMPTY: View = { items: [], isShowingDone: false, at: null, notes: [] }
 const view = atom({ plugin: 'puppy-todo', key: 'view' } as const, EMPTY)
@@ -149,7 +151,7 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        {!hasSvg && e.props.scroll.bodyRows >= PUPPY_MIN_ROWS && (
+        {!hasSvg && e.props.scroll.bodyRows >= PUPPY_MIN_ROWS && e.props.bodyColumns >= PUPPY_COLUMNS && (
           <Box key="puppy" flexDirection="column">
             {stillBlocks(mood).map((runs, i) => (
               <Text key={`puppy-${i}`}>
@@ -161,7 +163,7 @@ export const register: Register = on => {
         <Box flexDirection="row" justifyContent="space-between" alignItems="center" gap={1}>
           <Box flexDirection="row" alignItems="center" gap={1}>
             {hasSvg && 'Svg' in ui && (
-              <ui.Svg source={mascot(mood)} alt={`the puppy ${mood} at its laptop`} width={68} height={52} />
+              <ui.Svg source={mascot(mood)} alt={`the puppy ${mood}`} width={68} height={52} />
             )}
             <Text dimColor>{open.length === 0 ? 'all clear' : `${open.length} to-do`}</Text>
           </Box>
