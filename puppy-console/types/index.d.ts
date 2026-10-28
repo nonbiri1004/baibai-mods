@@ -48,6 +48,12 @@ export type Stage = 'plan' | 'clips' | 'voice' | 'compose' | 'final' | 'done'
 export type VideoJob = { job: string; stage: Stage; spend_usd: number; cap_usd: number; updated?: string; next?: string }
 export type VideoDetail = { spend_usd?: number; cap_usd?: number; jobs?: VideoJob[] }
 
+// detail of the pipelines "collector-<profile>" (info-collector core/status.py). The first four are
+// this run; unsent is high-scored items not in notion yet; pending is what waits for review in
+// notion now (at most 100), null when notion could not be read.
+export type CollectorCounts = { collected: number; new: number; scored: number; sent: number; unsent: number; pending: number | null }
+export type CollectorDetail = { counts?: Partial<CollectorCounts>; errors?: string[] }
+
 // A file in the folder that is not a card, and why.
 export type Problem = { file: string; reason: string }
 
@@ -80,6 +86,12 @@ export type Snapshot = {
 
 declare module 'claude-code' {
   interface PluginState {
-    'puppy-console': { snapshot: Snapshot | null }
+    'puppy-console': {
+      snapshot: Snapshot | null
+      // the cards folded or opened by hand (pipeline → folded), where that differs from the default
+      folds: Record<string, boolean>
+      // the "older" group is open
+      isShowingOlder: boolean
+    }
   }
 }

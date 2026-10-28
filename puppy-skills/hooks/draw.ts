@@ -1,6 +1,8 @@
 // The puppy at the top of the pane, as an SVG string: the bare puppy (no headphones) typing at
 // its little laptop, keeping you company. Frames come from baibai-brand (puppy.ts, generated).
 import { typing0, typing1, typing2, typing3, typing4, typing5 } from './puppy'
+import { typing0 as blockTyping0 } from './puppy-blocks'
+import type { BlockRun } from './puppy-blocks'
 
 const FRAMES = [typing0, typing1, typing2, typing3, typing4, typing5]
 // slower than the pet's 6 fps: motion stays slow and small
@@ -27,3 +29,6 @@ export function typingPuppy(): string {
     `${frames}</svg>`
   )
 }
+
+// One unscaled still frame on surfaces without Svg.
+export const stillBlocks = (): BlockRun[][] => blockTyping0

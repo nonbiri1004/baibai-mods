@@ -1,6 +1,6 @@
 # the status file format
 
-every pipeline writes one small json file into one shared folder. the mod reads every `*.json` in that folder and draws one card per file. the mod never runs a pipeline and never writes into the folder. (it keeps its own conversation files elsewhere; see conversations, below.)
+every pipeline writes one small json file into one shared folder. the mod reads every `*.json` in that folder and draws one card per file. it reads the folder only while its pane is open (once on `/console`, then every minute). the mod never runs a pipeline and never writes into the folder. (it keeps its own conversation files elsewhere; see conversations, below.)
 
 ```
 <status folder>/
@@ -36,7 +36,7 @@ every pipeline writes one small json file into one shared folder. the mod reads 
 | `pipeline` | yes | short id, lowercase, `a-z 0-9 -`; the file name is `<pipeline>.json` |
 | `title` | no | the card's title; `pipeline` when missing |
 | `host` | no | which computer wrote it |
-| `updated` | yes | iso 8601 time with the offset, when the file was written |
+| `updated` | yes | iso 8601 time with the offset, when the file was written. a card more than three days old folds into `older` at the bottom of the pane, unless it is `waiting` or `error` or has anything in `waiting` |
 | `stale_after_sec` | no | after this many seconds with no new file, the card says the pipeline has gone quiet. leave it out for a pipeline that only writes when you run a command |
 | `state` | yes | `running` (working now), `idle` (nothing to do), `waiting` (stopped until you do something), `error` (stopped by a problem) |
 | `headline` | yes | one short line: what it is doing now |
@@ -59,6 +59,11 @@ the mod draws these when `pipeline` matches; anything else in `detail` is ignore
 
 - `music`: `{ comfy: { up, running, pending }, generating, batches: [{ name, strip, est_usable, target_usable, generated, ok, needs_listen, rejected, errors, avg_gen_sec, status_tail }] }`. `strip` has one letter per song: `o` ok, `l` to hear, `r` rejected, `x` left out, `e` failed, `?` being checked.
 - `ai-video`: `{ spend_usd, cap_usd, jobs: [{ job, stage, spend_usd, cap_usd, updated, next }] }`. `stage` is `plan`, `clips`, `voice`, `compose`, `final` or `done`; the card groups jobs by stage.
+- `collector-*` (info-collector, one file per profile, e.g. `collector-tech-news`; matched by the prefix): `{ counts: { collected, new, scored, sent, unsent, pending }, errors: [text] }`.
+  - `collected`, `new`, `scored` and `sent` are this run. `scored` can be more than `new` (older unscored items are scored too), and `sent` can be more than `scored` (earlier runs' picks).
+  - `unsent`: high-scored items not in notion yet (sent next run, or refused).
+  - `pending`: items waiting for your review in notion now, from every run. at most 100 (`100` means 100 or more); `null` when notion could not be read.
+  - without `counts` (older files) the card draws no picture and no extra lines.
 
 ## conversations
 

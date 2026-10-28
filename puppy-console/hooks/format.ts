@@ -109,3 +109,33 @@ export function alerts(prev: Snapshot | null, next: Snapshot): string[] {
   }
   return out
 }
+
+// A card waits for you while it is waiting or broken, or holds anything in its waiting list.
+// Such a card never moves into the "older" group, however old.
+export const waitsForYou = (s: Status) => s.state === 'waiting' || s.state === 'error' || (s.waiting ?? []).length > 0
+
+// Older: no update for more than three days (by "updated" only) and nothing waiting for you.
+// A future "updated" gives a negative age, so it is never older.
+export const OLDER_MS = 3 * 24 * 3_600_000
+export const isOlder = (s: Status, now: number) => !waitsForYou(s) && now - Date.parse(s.updated) > OLDER_MS
+
+// The cards of the pane and of the "older" group at the bottom. current keeps the order it was
+// given (sortCards); older is newest first. Done at every draw, since it depends on the time.
+export function splitCards(cards: Status[], now: number): { current: Status[]; older: Status[] } {
+  const older = cards.filter(s => isOlder(s, now))
+    .sort((a, b) => Date.parse(b.updated) - Date.parse(a.updated) || titleOf(a).localeCompare(titleOf(b)))
+  return { current: cards.filter(s => !older.includes(s)), older }
+}
+
+// A card is folded when the person folded it, else by its group: open among the current cards,
+// folded in the "older" group. Only a choice that differs from that default is kept, so a card
+// that moves between the groups follows its new group unless the person said otherwise.
+export const isFolded = (folds: Record<string, boolean>, pipeline: string, isOlderCard: boolean) =>
+  folds[pipeline] ?? isOlderCard
+
+export function toggleFold(folds: Record<string, boolean>, pipeline: string, isOlderCard: boolean): Record<string, boolean> {
+  const next = !isFolded(folds, pipeline, isOlderCard)
+  const rest = { ...folds }
+  delete rest[pipeline]
+  return next === isOlderCard ? rest : { ...rest, [pipeline]: next }
+}

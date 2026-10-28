@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { byStage, cut, MAX_SQUARES, picture } from '../hooks/draw'
-import { alerts, expandHome, isStale, parseStatus, sortCards, textBar } from '../hooks/format'
+import { byStage, collectorCounts, cut, detailLines, MAX_SQUARES, picture } from '../hooks/draw'
+import { alerts, expandHome, isFolded, isOlder, isStale, OLDER_MS, parseStatus, sortCards, splitCards, textBar, toggleFold } from '../hooks/format'
 import type { Snapshot, Status } from '../types'
 
 const base = {
@@ -161,23 +161,73 @@ test('no folder set: the pane says where to set it', async ($, on) => {
   await ui.unmount()
 })
 
-for (const notify of ['on', 'off'] as const)
-test(`the timer shows a toast when a card starts waiting (notices ${notify})`, { options: { status_dir: '/s', notify } }, async ($, on) => {
-  let music = file({ state: 'running' })
-  const toasts: string[] = []
-  mock.env(on, { HOME: '/home/me' })
-  const clock = mock.clock(on, { now: Date.parse(base.updated) })
-  on('fs.list', () => ({ value: [{ name: 'music.json', kind: 'file', size: 1, mtimeMs: 0, isLink: false }] }))
-  on('fs.read', () => ({ value: music }))
-  on('ui.toast', (_, e) => { toasts.push((e as { text: string }).text); return { value: undefined } })
-  on('command.register', () => ({ value: { command: 'console' } }))
-  on('session.start', (_, e) => ({ cwd: e.cwd }))
-  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
-  await clock.settle()
-  expect(toasts).toEqual([])
-  music = file({ state: 'waiting', waiting: [{ id: 'l7', text: 'hear song 7' }] })
-  await clock.advance(60_000)
-  expect(toasts).toEqual(notify === 'on' ? ['music · waiting: hear song 7'] : [])
-  await clock.advance(60_000)
-  expect(toasts).toHaveLength(notify === 'on' ? 1 : 0)
+test('older: more than three days without an update, and nothing waiting for you', () => {
+  const t = Date.parse(base.updated)
+  const idle = parseStatus(file({ state: 'idle' }))
+  expect(isOlder(idle, t + OLDER_MS)).toBe(false)               // exactly three days: not yet
+  expect(isOlder(idle, t + OLDER_MS + 1)).toBe(true)
+  expect(isOlder(idle, t - 60_000)).toBe(false)                 // an "updated" in the future
+  // quiet (stale) is not waiting: it folds away like any other old card
+  expect(isOlder(parseStatus(file({ state: 'running', stale_after_sec: 360 })), t + 4 * 86_400_000)).toBe(true)
+  // a card that waits for you never does, however old
+  for (const over of [{ state: 'waiting' }, { state: 'error' }, { state: 'idle', waiting: [{ id: 'a', text: 'hear #7' }] }])
+    expect(isOlder(parseStatus(file(over)), t + 10 * 86_400_000)).toBe(false)
+})
+
+test('the older cards go last, newest first; the rest keep their order', () => {
+  const t = Date.parse(base.updated)
+  const mk = (pipeline: string, state: string, daysOld: number) =>
+    parseStatus(file({ pipeline, state, updated: new Date(t - daysOld * 86_400_000).toISOString() }))
+  const cards = sortCards([mk('a', 'idle', 9), mk('b', 'idle', 4), mk('c', 'waiting', 30), mk('d', 'running', 0)])
+  const { current, older } = splitCards(cards, t)
+  expect(current.map(s => s.pipeline)).toEqual(['c', 'd'])
+  expect(older.map(s => s.pipeline)).toEqual(['b', 'a'])
+})
+
+test('a fold is kept only where it differs from the default of its group', () => {
+  expect(isFolded({}, 'music', false)).toBe(false)              // current cards start open
+  expect(isFolded({}, 'old', true)).toBe(true)                  // older cards start folded
+  expect(toggleFold({}, 'music', false)).toEqual({ music: true })
+  expect(toggleFold({ music: true }, 'music', false)).toEqual({})
+  expect(toggleFold({}, 'old', true)).toEqual({ old: false })
+  expect(toggleFold({ old: false, music: true }, 'old', true)).toEqual({ music: true })
+})
+
+const collector = (detail: object, pipeline = 'collector-tech-news') =>
+  parseStatus(file({ pipeline, state: 'waiting', detail }))
+const COUNTS = { collected: 412, new: 58, scored: 58, sent: 9, unsent: 2, pending: 27 }
+
+test('a collector card draws its counts', () => {
+  const pic = picture(collector({ counts: COUNTS, errors: [] }), false)!
+  expect(pic.height).toBe(62)
+  expect(pic.alt).toContain('27 to review in notion')
+  expect(pic.alt).toContain('2 unsent')
+  expect(pic.source).toContain('stroke-dasharray="4 3"')
+  expect(pic.source).toContain('var(--reject)')
+  expect(pic.source.length).toBeLessThan(131072)
+  expect(detailLines(collector({ counts: COUNTS }))).toEqual([
+    'collected 412 › new 58 › scored 58 › sent 9',
+    'to review 27 · unsent 2',
+  ])
+})
+
+test('a collector card: notion not read, and the 100 cap', () => {
+  const unread = collector({ counts: { ...COUNTS, unsent: 0, pending: null } })
+  expect(picture(unread, false)!.alt).toContain('notion not read')
+  expect(detailLines(unread)[1]).toBe('to review ? (notion not read) · unsent 0')
+  for (const pending of [100, 140]) expect(detailLines(collector({ counts: { ...COUNTS, pending } }))[1]).toMatch(/^to review 100\+/)
+  // a stage number that is missing or odd counts as 0
+  expect(collectorCounts(collector({ counts: { collected: 3, new: 'x' } }))).toEqual({ collected: 3, new: 0, scored: 0, sent: 0, unsent: 0, pending: null })
+})
+
+test('an older collector file (no counts) draws as before', () => {
+  for (const detail of [{ errors: ['x'] }, { counts: [] }, { counts: { collected: 'x' } }]) {
+    expect(picture(collector(detail), false)).toBeNull()
+    expect(detailLines(collector(detail))).toEqual([])
+  }
+  // only the prefix "collector-" is a collector
+  for (const pipeline of ['info-collector', 'collectors']) {
+    expect(picture(collector({ counts: COUNTS }, pipeline), false)).toBeNull()
+    expect(detailLines(collector({ counts: COUNTS }, pipeline))).toEqual([])
+  }
 })

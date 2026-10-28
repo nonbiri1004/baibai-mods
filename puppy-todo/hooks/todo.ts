@@ -2,10 +2,6 @@
 import type { Item, Kind } from '../types'
 
 export const KINDS: readonly Kind[] = ['todo', 'ask', 'later']
-// the puppy at the top of the pane, no headphones (a to-do isn't music, so no orange either):
-// happy when nothing is open, calm otherwise
-export const FACES = { calm: '•ᴥ•', happy: '^ᴥ^' } as const
-
 // done items stay in the done list this long, then only the file remains
 export const DONE_DAYS = 3
 const DAY = 86_400_000

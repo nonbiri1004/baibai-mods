@@ -1,8 +1,10 @@
 // The picture under each card, as an SVG string: a progress bar for any pipeline, and a richer
-// picture for the details this mod knows (music, ai-video). Warm greys, light by day and dark by
+// picture for the details this mod knows (music, ai-video, collector-*). Warm greys, light by day and dark by
 // night, low contrast. The puppy is the bare one (no headphones): a coding tool.
-import type { MusicDetail, Stage, Status, VideoDetail, VideoJob } from '../types'
+import type { CollectorCounts, CollectorDetail, MusicDetail, Stage, Status, VideoDetail, VideoJob } from '../types'
 import { sit, sitBlink, sleep0, sleep1, typing0, typing1, typing2, typing3, typing4, typing5 } from './puppy'
+import { sit as blockSit, sleep0 as blockSleep0, typing0 as blockTyping0 } from './puppy-blocks'
+import type { BlockRun } from './puppy-blocks'
 
 export const W = 640
 
@@ -167,6 +169,64 @@ function videoPicture(s: Status): Picture | null {
   }
 }
 
+// info-collector writes one file per profile: collector-tech-news.json, collector-jobs.json, …
+export const COLLECTOR = 'collector-'
+// info-collector counts one page of notion results, so 100 means "100 or more"
+export const PENDING_CAP = 100
+
+const count = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) && x >= 0 ? Math.round(x) : null)
+
+// detail.counts of a collector-<profile> card; null for an older file without it (or a broken one).
+// A stage number that is missing or odd counts as 0; a pending that is not a number means
+// notion was not read.
+export function collectorCounts(s: Status): CollectorCounts | null {
+  const c = ((s.detail ?? {}) as CollectorDetail).counts
+  if (typeof c !== 'object' || c === null || Array.isArray(c)) return null
+  const collected = count(c.collected)
+  if (collected == null) return null
+  return { collected, new: count(c.new) ?? 0, scored: count(c.scored) ?? 0, sent: count(c.sent) ?? 0, unsent: count(c.unsent) ?? 0, pending: count(c.pending) }
+}
+
+const toReview = (p: number | null) => (p == null ? '?' : p >= PENDING_CAP ? `${PENDING_CAP}+` : String(p))
+
+// This run's four stages left to right, then two boxes: what waits for your review in notion
+// (dashed, like ai-video's review gates only you pass) and what scored high but is not in notion
+// yet. The bars are scaled to the run's largest count, not the stage before: older unscored items
+// are scored too, and earlier runs' picks are sent too, so it is not a strict funnel.
+function collectorPicture(s: Status): Picture | null {
+  const c = collectorCounts(s)
+  if (!c) return null
+  const H = 62
+  const COL = 96
+  const BOX = 112
+  const stages: [string, number][] = [['collected', c.collected], ['new', c.new], ['scored', c.scored], ['sent', c.sent]]
+  const top = Math.max(1, ...stages.map(([, n]) => n))
+  let body = ''
+  stages.forEach(([name, n], i) => {
+    const x = i * COL
+    // a count above 0 always shows a little fill
+    const part = n > 0 ? Math.max(n / top, 4 / (COL - 20)) : 0
+    body += `<text class="m px" x="${x}" y="14" font-size="12">${name}</text>` +
+      `<text class="t" x="${x}" y="40" font-size="22">${n}</text>` + bar(x, 50, COL - 20, part)
+    if (i < stages.length - 1) body += `<text class="m" x="${x + COL - 14}" y="37" font-size="16">›</text>`
+  })
+  const box = (x: number, name: string, value: string, color: string, isOn: boolean, isGate: boolean) =>
+    `<rect x="${x + 0.5}" y="0.5" width="${BOX - 1}" height="${H - 1}" rx="6" fill="var(--card)" stroke="${isOn ? color : 'var(--line)'}"${isGate ? ' stroke-dasharray="4 3"' : ''}/>` +
+    `<rect x="${x + 10}" y="6" width="8" height="8" rx="1" fill="${isOn ? color : 'var(--line)'}"/>` +
+    `<text class="m px" x="${x + 22}" y="14" font-size="12">${name}</text>` +
+    `<text class="${isOn ? 't' : 'm'}" x="${x + 10}" y="40" font-size="22">${value}</text>`
+  const review = W - 2 * BOX - 12
+  body += box(review, 'to review', toReview(c.pending), 'var(--listen)', (c.pending ?? 0) > 0, true)
+  if (c.pending == null) body += `<text class="m" x="${review + 10}" y="54" font-size="10">notion not read</text>`
+  body += box(W - BOX, 'unsent', String(c.unsent), 'var(--reject)', c.unsent > 0, false)
+  const notion = c.pending == null ? 'notion not read' : `${toReview(c.pending)} to review in notion`
+  return {
+    height: H,
+    alt: `collected ${c.collected}, new ${c.new}, scored ${c.scored}, sent ${c.sent}; ${notion}; ${c.unsent} unsent`,
+    source: svg(H, body),
+  }
+}
+
 // The same details as text, for surfaces without Svg (the terminal).
 export function detailLines(s: Status): string[] {
   if (s.pipeline === 'music') {
@@ -187,12 +247,21 @@ export function detailLines(s: Status): string[] {
     if (d.cap_usd) lines.push(`spent $${(d.spend_usd ?? 0).toFixed(2)} of $${d.cap_usd.toFixed(2)}`)
     return lines
   }
+  if (s.pipeline.startsWith(COLLECTOR)) {
+    const c = collectorCounts(s)
+    if (!c) return []
+    return [
+      `collected ${c.collected} › new ${c.new} › scored ${c.scored} › sent ${c.sent}`,
+      `to review ${c.pending == null ? '? (notion not read)' : toReview(c.pending)} · unsent ${c.unsent}`,
+    ]
+  }
   return []
 }
 
 export function picture(s: Status, isStale: boolean): Picture | null {
   if (s.pipeline === 'music') return musicPicture(s, isStale) ?? progressPicture(s)
   if (s.pipeline === 'ai-video') return videoPicture(s) ?? progressPicture(s)
+  if (s.pipeline.startsWith(COLLECTOR)) return collectorPicture(s) ?? progressPicture(s)
   return progressPicture(s)
 }
 
@@ -219,3 +288,14 @@ export function mascot(mood: Mood): string {
   }).join('')
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${34 * MASCOT_SCALE}" height="${26 * MASCOT_SCALE}" viewBox="0 0 34 26" shape-rendering="crispEdges">${body}</svg>`
 }
+
+// The same puppy for a surface with no Svg (the terminal), from baibai-brand's block output:
+// each character holds two pixels stacked, as Claude Code draws its mascot. One still frame per
+// mood: redrawing the pane a few times a second would flicker, and the puppy moves slowly anyway.
+// The pane's rows (e.props.scroll.bodyRows) the block puppy needs: its 13 rows take at most half.
+// Shorter, it is left out, never shrunk. puppy-todo and puppy-skills use the same number.
+export const PUPPY_MIN_ROWS = 26
+// The columns (e.props.bodyColumns) it needs: a narrower pane would wrap its rows apart.
+export const PUPPY_COLUMNS = 34
+const STILLS: Record<Mood, BlockRun[][]> = { typing: blockTyping0, sitting: blockSit, sleeping: blockSleep0 }
+export const stillBlocks = (mood: Mood): BlockRun[][] => STILLS[mood]
