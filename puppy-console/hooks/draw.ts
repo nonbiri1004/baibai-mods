@@ -2,7 +2,7 @@
 // picture for the details this mod knows (music, ai-video). Warm greys, light by day and dark by
 // night, low contrast. The puppy is the bare one (no headphones): a coding tool.
 import type { MusicDetail, Stage, Status, VideoDetail, VideoJob } from '../types'
-import { sit, sitBlink, sleep0, sleep1 } from './puppy'
+import { sit, sitBlink, sleep0, sleep1, typing0, typing1, typing2, typing3, typing4, typing5 } from './puppy'
 
 export const W = 640
 
@@ -194,4 +194,28 @@ export function picture(s: Status, isStale: boolean): Picture | null {
   if (s.pipeline === 'music') return musicPicture(s, isStale) ?? progressPicture(s)
   if (s.pipeline === 'ai-video') return videoPicture(s) ?? progressPicture(s)
   return progressPicture(s)
+}
+
+// The puppy beside the pane's first row, as puppy-skills draws it: typing at its laptop while a
+// conversation is running, sitting (and blinking) while one waits for you, asleep when nothing goes on.
+export type Mood = 'typing' | 'sitting' | 'sleeping'
+const MOODS: Record<Mood, { frames: string[]; seconds: number }> = {
+  // slower than the pet's 6 fps: motion stays slow and small
+  typing: { frames: [typing0, typing1, typing2, typing3, typing4, typing5], seconds: 2.4 },
+  sitting: { frames: [sit, sit, sit, sit, sit, sit, sit, sit, sit, sitBlink], seconds: 4 },
+  sleeping: { frames: [sleep0, sleep1], seconds: 3 },
+}
+export const MASCOT_SCALE = 2
+
+// one frame shown at a time, swapped by SMIL; each frame is visible for its share of the loop
+export function mascot(mood: Mood): string {
+  const { frames, seconds } = MOODS[mood]
+  const n = frames.length
+  const keyTimes = frames.map((_, i) => (i / n).toFixed(4)).join(';')
+  const body = frames.map((rects, i) => {
+    const values = frames.map((_, j) => (j === i ? 'visible' : 'hidden')).join(';')
+    return `<g visibility="${i === 0 ? 'visible' : 'hidden'}">${rects}` +
+      `<animate attributeName="visibility" values="${values}" keyTimes="${keyTimes}" dur="${seconds}s" repeatCount="indefinite" calcMode="discrete"/></g>`
+  }).join('')
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${34 * MASCOT_SCALE}" height="${26 * MASCOT_SCALE}" viewBox="0 0 34 26" shape-rendering="crispEdges">${body}</svg>`
 }

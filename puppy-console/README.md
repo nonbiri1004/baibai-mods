@@ -20,6 +20,7 @@ the pipeline cards only read. each pipeline writes one small json file into a fo
 - a pipeline that promised to write every few minutes (`stale_after_sec`) and went quiet gets a "quiet" mark, so a sleeping computer doesn't look like it is still working.
 - a file in the folder that isn't a status file is named at the bottom with the reason, never dropped without a word.
 - the folder can be a synced one (google drive, dropbox), so a pipeline on another computer gets a card too.
+- the puppy sits beside the first row, at its little laptop: typing while a conversation is running, sitting while one waits for you, asleep when nothing goes on. the terminal shows its face (`•ᴥ•`, `-ᴥ-`) instead.
 - the desktop app draws a small picture per card (the music card has the puppy and one square per song; the ai-video card groups jobs by review gate). the terminal shows the same as text.
 
 ## install

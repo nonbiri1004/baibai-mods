@@ -87,6 +87,9 @@ test('the conversations card comes first, with what each one asks', { options: {
     const ui = await $.ui.mount({ ...PANE, surface })
     const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
     expect(texts.indexOf('conversations')).toBeLessThan(texts.indexOf('music'))
+    // one waits for you: the puppy sits (a picture on the desktop, its face on the terminal)
+    if (surface === 'desktop') expect((await ui.find({ type: 'Svg' }))?.props.alt).toBe('the puppy sitting at its laptop')
+    else expect(texts).toContain('•ᴥ•')
     expect(texts).toContain('→ Open a PR?')
     expect(texts).toContain('Card added.')
     expect(texts.some(t => /fix the bowl · done/.test(t ?? ''))).toBe(true)
@@ -111,7 +114,8 @@ test('a turn writes this conversation\'s own file: running, then where it stands
   })
   on('fs.write', (_, e) => { const { path, text } = e as { path: string; text: string }; written[path] = text; return { value: undefined } })
   on('session.id', () => ({ value: id }))
-  on('session.root', () => ({ value: '/Users/me/dev/puppy-mods' }))
+  let repo: object | null = { root: '/Users/me/dev/puppy-mods', remote: null, internal: false, name: null }
+  on('session.repo', () => ({ value: repo as never }))
   on('session.messages', () => ({ value: [user('<system-reminder>x</system-reminder>add the card')] as never }))
   on('tool.call', () => ({ result: null }) as never)
   on('command.register', () => ({ value: { command: 'console' } }))
@@ -146,11 +150,13 @@ test('a turn writes this conversation\'s own file: running, then where it stands
   await clock.settle()
   expect(file()).toMatchObject({ state: 'done', recap: 'Pushed.' })
 
-  // /clear: a new id, a new file, nothing carried over
+  // /clear: a new id, a new file, nothing carried over; outside any repository, no project
   id = 'def'
+  repo = null
   await $.turn.start({ text: 'new topic', turnId: 't4' })
   await clock.settle()
   expect(file()).toMatchObject({ id: 'def', state: 'running', recap: '' })
+  expect(file().project).toBeUndefined()
 })
 
 test('conversations off: nothing is written and no card is drawn', { options: { status_dir: '/s', conversations: 'off' } }, async ($, on) => {
@@ -170,4 +176,21 @@ test('conversations off: nothing is written and no card is drawn', { options: { 
   await clock.settle()
   expect(writes).toBe(0)
   expect(lists.some(p => p.includes('.claude/console'))).toBe(false)
+})
+
+test('with no status folder set, the conversations card still comes before the error', async ($, on) => {
+  mock.env(on, { HOME: '/home/me' })
+  mock.clock(on, { now: T + 60_000 })
+  on('fs.list', (_, e) => ({ value: (e as { path: string }).path.endsWith('sessions') ? [entry('a.json')] : [] }))
+  on('fs.read', () => ({ value: conv({ id: 'a', state: 'running', title: 'busy one' }) }))
+  on('command.register', () => ({ value: { command: 'console' } }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  await $.session.start({ cwd: '/', surface: 'desktop', isInteractive: true })
+  expect((await $.command.run({ command: 'console', args: '', origin: { kind: 'composer' }, presentation: { isFullscreen: false, columns: 80 } })).text).toBe('console opened.')
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text ?? '')
+  expect(texts.indexOf('conversations')).toBeLessThan(texts.findIndex(t => /no status folder set/.test(t)))
+  expect((await ui.find({ type: 'Svg' }))?.props.alt).toBe('the puppy typing at its laptop')
+  await ui.unmount()
 })

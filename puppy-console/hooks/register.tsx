@@ -2,7 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Conversation, Problem, Snapshot, Status } from '../types'
-import { detailLines, picture, W } from './draw'
+import { detailLines, MASCOT_SCALE, mascot, picture, W } from './draw'
+import type { Mood } from './draw'
 import { ago, alerts, expandHome, isStale, parseStatus, sortCards, textBar, titleOf } from './format'
 import { folderName, isWrapUp, KEEP_MS, nameOf, oneLine, parseConversation, plain, recent, SESSIONS, shownState, wrapOf } from './sessions'
 
@@ -10,6 +11,8 @@ const PANE = 'puppy-console'
 const REFRESH_MS = 60_000
 const MAX_NEEDS = 6
 const MAX_OTHERS = 5
+// the terminal has no pictures: the puppy's face instead
+const FACE: Record<Mood, string> = { typing: '•ᴥ•', sitting: '•ᴥ•', sleeping: '-ᴥ-' }
 
 const snapshot = atom({ plugin: 'puppy-console', key: 'snapshot' } as const, null)
 
@@ -77,12 +80,14 @@ function save($: EngineInterface, change: (c: Conversation) => Conversation, pro
     if (own?.id !== id) {
       own = await $.fs.read(path).then(parseConversation).catch(() => null)
       if (!own) {
-        const [messages, root] = await Promise.all([$.session.messages(), $.session.root()])
+        // the repository's name (a worktree's main checkout), not the folder: no "console-sessions"
+        // for a worktree, no home folder's name for a conversation outside any repository
+        const [messages, repo] = await Promise.all([$.session.messages(), $.session.repo().catch(() => null)])
         const title = nameOf(messages)
         own = {
           format: 'session-status', version: 1, id, updated: '', state: 'running',
           title: title === 'new conversation' && plain(prompt) ? oneLine(plain(prompt), 60) : title,
-          project: folderName(root), recap: '', ask: null,
+          project: repo ? folderName(repo.root) : undefined, recap: '', ask: null,
         }
       }
     }
@@ -134,7 +139,7 @@ export const register: Register = (on, options) => {
   const isWriting = options.conversations !== 'off'
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'console', description: 'Open the pipeline cards' })
+    await $.command.register({ name: 'console', description: 'Open the console: your conversations, then the pipelines' })
     void refresh($, setting, isNotifying, isWriting)
     // Like setInterval in a component's mount: each tick reads the folder again and the pane redraws.
     $.clock.every(REFRESH_MS, () => refresh($, setting, isNotifying, isWriting))
@@ -169,7 +174,7 @@ export const register: Register = (on, options) => {
   on('command.run', { command: 'console' }, async $ => {
     await refresh($, setting, isNotifying, isWriting)
     await $.ui.open({ id: PANE, title: 'console' })
-    return { text: 'pipeline cards opened.' }
+    return { text: 'console opened.' }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
@@ -180,6 +185,9 @@ export const register: Register = (on, options) => {
     if (!snap) return <Text dimColor>loading…</Text>
 
     const hasSvg = e.surface !== 'terminal' && 'Svg' in ui
+    // the puppy types while a conversation is running, sits while one waits for you, else sleeps
+    const shown = snap.conversations.map(c => shownState(c, now))
+    const mood: Mood = shown.includes('running') ? 'typing' : shown.includes('waiting') || shown.includes('error') ? 'sitting' : 'sleeping'
 
     const card = (s: Status) => {
       const stale = isStale(s, now)
@@ -252,17 +260,22 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Box flexDirection="row" justifyContent="space-between">
-          <Text dimColor>checked {ago(now - snap.loadedAt)}</Text>
+        <Box flexDirection="row" justifyContent="space-between" alignItems="center">
+          <Box flexDirection="row" alignItems="center" gap={1}>
+            {hasSvg && 'Svg' in ui
+              ? <ui.Svg source={mascot(mood)} alt={`the puppy ${mood} at its laptop`} width={34 * MASCOT_SCALE} height={26 * MASCOT_SCALE} />
+              : <Text>{FACE[mood]}</Text>}
+            <Text dimColor>checked {ago(now - snap.loadedAt)}</Text>
+          </Box>
           <Button key="refresh" label="refresh" hotkey="r" onPress={() => refresh($, setting, isNotifying, isWriting)} />
         </Box>
+        {snap.conversations.length > 0 && conversationsCard(snap.conversations)}
         {snap.dirError && (
           <Box flexDirection="column">
             <Text color="error">can't read the status folder: {snap.dirError}</Text>
             <Text dimColor>set it in /config → puppy-console → status folder{snap.dir ? ` (now ${snap.dir})` : ''}</Text>
           </Box>
         )}
-        {snap.conversations.length > 0 && conversationsCard(snap.conversations)}
         {!snap.dirError && snap.cards.length === 0 && snap.problems.length === 0 && (
           <Text dimColor>no status files in {snap.dir} yet</Text>
         )}
