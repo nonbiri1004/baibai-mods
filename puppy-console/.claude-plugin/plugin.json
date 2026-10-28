@@ -1,6 +1,6 @@
 {
   "name": "puppy-console",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "a pane with one card per production pipeline, read from small status files",
   "types": "./types/index.d.ts",
   "author": {

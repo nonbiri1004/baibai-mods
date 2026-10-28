@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { cardsOf, firstSentence, isNamedIn, parseSkill, usesOf, whenOf } from '../hooks/skills'
+import { cardsOf, cut, firstSentence, isNamedIn, parseSkill, usesOf, whenOf } from '../hooks/skills'
 
 test('frontmatter: name and description, quoted or folded', () => {
   expect(parseSkill('---\nname: nap-time\ndescription: "Finds a sunny spot. Then naps."\n---\nbody')).toEqual({
@@ -42,4 +42,10 @@ test('cards: personal first, then repos, then plugins', () => {
   })
   const cards = cardsOf([s('plugin', 'toys', 'ball'), s('repo', 'garden', 'dig'), s('personal', '', 'nap')])
   expect(cards.map(c => `${c.title}|${c.scope}`)).toEqual(['personal|anywhere', 'garden|only in garden', 'toys|plugin'])
+})
+
+test('cut: by columns, a CJK character is two', () => {
+  expect(cut('short', 10)).toBe('short')
+  expect(cut('a long sentence here', 10)).toBe('a long se…')
+  expect(cut('白白白白白白', 7)).toBe('白白白…')
 })

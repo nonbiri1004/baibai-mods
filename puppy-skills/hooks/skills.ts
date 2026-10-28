@@ -40,6 +40,24 @@ export function firstSentence(text: string): string {
   return (m ? m[0] : text).trim()
 }
 
+// cut to n columns, with …: a CJK character takes two
+const isWide = (c: string) => /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/.test(c)
+export function cut(s: string, n: number): string {
+  const chars = [...s]
+  const width = (cs: string[]) => cs.reduce((w, c) => w + (isWide(c) ? 2 : 1), 0)
+  if (width(chars) <= n) {
+    return s
+  }
+  let used = 0
+  let i = 0
+  while (i < chars.length && used + (isWide(chars[i]) ? 2 : 1) <= n - 1) {
+    used += isWide(chars[i]) ? 2 : 1
+    i++
+  }
+
+  return `${chars.slice(0, i).join('').trimEnd()}…`
+}
+
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']
 
 // short words for a schedule: "9:00 daily", "9:00 mon", "once oct 3 14:50"; the cron itself when unsure
