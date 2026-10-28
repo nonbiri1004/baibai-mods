@@ -2,7 +2,7 @@
 
 a quiet pane that lists the claude code skills you have, and where each one works.
 
-type `/my-skills` (`/skills` is claude code's own). the pane only reads files: it never runs a skill and never shows what is running (that is `puppy-console`'s job).
+type `/my-skills` (`/skills` is claude code's own). on the desktop the puppy sits at the top, typing at its little laptop; the terminal shows `•ᴥ•`. the pane only reads files: it never runs a skill and never shows what is running (that is `puppy-console`'s job).
 
 ```
 •ᴥ• 4 skills · looked 10:02                     refresh

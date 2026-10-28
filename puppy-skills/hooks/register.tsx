@@ -2,10 +2,13 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, FsEntry, Register } from 'claude-code'
 
 import type { Skill, View, Where } from '../types'
-import { FACE, bodyOf, cardsOf, firstSentence, parseSkill, usesOf, whenOf } from './skills'
+import { typingPuppy } from './draw'
+import { FACE, bodyOf, cardsOf, cut, firstSentence, parseSkill, usesOf, whenOf } from './skills'
 import type { Task } from './skills'
 
 const PANE = 'puppy-skills'
+// how long a first sentence may run (Latin columns; a CJK character is two) where rows wrap
+const SENTENCE = 110
 
 const EMPTY: View = { skills: [], openIds: [], at: null, notes: [] }
 const view = atom({ plugin: 'puppy-skills', key: 'view' } as const, EMPTY)
@@ -195,15 +198,16 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const { Box, Text, Button } = $.ui.resolve(e)
+    const ui = $.ui.resolve(e)
+    const { Box, Text, Button } = ui
     const v: View = { ...EMPTY, ...(await read($, view)) }
     if (v.at === null) {
       return <Text dimColor>{FACE} sniffing around…</Text>
     }
-    const isDesktop = e.surface === 'desktop'
-    // a card's text area: the pane less border and padding; the name and the mark take the rest
-    const cols = Math.max(10, e.props.bodyColumns - 4)
-    const clip = (s: string, n: number) => (isDesktop || s.length <= n ? s : `${s.slice(0, Math.max(1, n - 1))}…`)
+    const hasSvg = e.surface !== 'terminal' && 'Svg' in ui
+    // the terminal: one line per skill, cut to the card (the pane less border and padding).
+    // elsewhere a row may wrap, but a long first sentence still stops at SENTENCE columns
+    const cols = e.surface === 'terminal' ? Math.max(10, e.props.bodyColumns - 4) : SENTENCE
     const toggle = (id: string) =>
       update($, view, was => ({
         ...EMPTY,
@@ -214,13 +218,16 @@ export const register: Register = on => {
     return (
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="row" justifyContent="space-between" gap={1}>
-          <Text>
-            {FACE}
+          <Box flexDirection="row" alignItems="center" gap={1}>
+            {hasSvg && 'Svg' in ui ? (
+              <ui.Svg source={typingPuppy()} alt="the puppy typing at its laptop" width={68} height={52} isInteractive />
+            ) : (
+              <Text>{FACE}</Text>
+            )}
             <Text dimColor>
-              {' '}
               {v.skills.length} skills · looked {clock(v.at)}
             </Text>
-          </Text>
+          </Box>
           <Button key="refresh" label="refresh" dimColor onPress={() => load($)} />
         </Box>
 
@@ -239,14 +246,14 @@ export const register: Register = on => {
 
               return (
                 <Box key={`s-${s.id}`} flexDirection="column">
-                  <Box flexDirection="row" gap={1}>
+                  <Box flexDirection="row" alignItems="flex-start" gap={1}>
                     <Box width={3} flexShrink={0}>
                       <Button key={`open-${s.id}`} label={isOpen ? '▾' : '▸'} plain dimColor onPress={() => toggle(s.id)} />
                     </Box>
                     <Box flexGrow={1} flexShrink={1} minWidth={0}>
-                      <Text wrap="truncate-end">
+                      <Text>
                         {s.name}
-                        <Text dimColor> {clip(firstSentence(s.description), cols - s.name.length - 5 - right.length)}</Text>
+                        <Text dimColor> {cut(firstSentence(s.description), Math.max(8, cols - s.name.length - 5 - right.length))}</Text>
                       </Text>
                     </Box>
                     {right ? (

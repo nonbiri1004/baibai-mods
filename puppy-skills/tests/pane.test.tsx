@@ -40,6 +40,13 @@ test('the pane: a card per place, the first sentence, a clock on the scheduled o
     expect((await ui.find({ type: 'Text', text: /only in garden/ }))?.text).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /⏰ 9:00/ }))?.text).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: /Never two/ })).toBeFalsy()
+    // the typing puppy where pictures draw, the face on the terminal
+    if (surface === 'terminal') {
+      expect((await ui.find({ type: 'Text', text: /•ᴥ•/ }))?.text).toBeTruthy()
+    } else {
+      const pic = await ui.find({ type: 'Svg' })
+      expect(pic).toBeTruthy()
+    }
     await ui.unmount()
   }
 })
@@ -51,5 +58,15 @@ test('unfolded: the whole description and the schedule', async ($, on) => {
   expect((await ui.find({ type: 'Text', text: /morning dig · 9:00 daily/ }))?.text).toBeTruthy()
   // read only: nothing to run
   expect(await ui.find({ type: 'Button', text: /run/ })).toBeFalsy()
+  await ui.unmount()
+})
+
+test('a long first sentence is cut, not the whole paragraph', async ($, on) => {
+  const long = { ...VIEW.skills[0], id: 'personal::docs', name: 'docs', description: `docs (${'word '.repeat(80)}) and more` }
+  on('state.get', () => ({ value: { value: { ...VIEW, skills: [long] }, version: 1 } }))
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  const row = (await ui.findAll({ type: 'Text' })).map(t => t.text).find(t => t.startsWith('docs'))
+  expect(row?.endsWith('…')).toBe(true)
+  expect((row?.length ?? 0) < 130).toBe(true)
   await ui.unmount()
 })
