@@ -11,7 +11,7 @@
     {
       "name": "puppy-todo",
       "source": "./puppy-todo",
-      "description": "one quiet to-do pane for every conversation: what this one is for, questions waiting on you, PRs to merge, and what's left"
+      "description": "your own to-do list in a quiet pane: add, tick, delete. nothing else writes to it"
     },
     {
       "name": "puppy-console",
