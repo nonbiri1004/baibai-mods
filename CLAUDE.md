@@ -8,7 +8,6 @@ lofi puppy 維護的 Claude Code 小 mod，一個 mod 一個資料夾。這個 r
 - 產生出來的檔案（`puppy-pipelines/hooks/puppy.ts`、`brand.lock.json`）絕對不要手改；改 baibai-brand 再同步。
 - 每個 mod 的測試放在 `<mod>/tests/`；開 PR 前先跑 `claude plugin test <mod>` 和 `claude plugin validate <mod>`。
 - mod 有改動時，要調高它 `.claude-plugin/plugin.json` 裡的 `version`。
-- 絕不直接 push 到 main：一律開分支和 PR。測試、`validate`、需要的 Codex review 都過了，由 Claude 用 `gh pr merge --merge` merge，不用等使用者（10/28 使用者決定）。merge 完告訴使用者要跑哪些更新指令。
 - git commit 訊息用英文，動詞開頭。PR 標題和說明用簡單的英文。回覆使用者用繁體中文。
 - Codex 會把這個檔案當成 `AGENTS.md`（symlink）來讀。Codex 不改這個檔案或 `STYLE.md`；想改的話，在 PR 說明裡提議。
 
