@@ -1,12 +1,16 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-import type { Problem, Snapshot, Status } from '../types'
-import { detailLines, picture, W } from './draw'
+import type { Conversation, Problem, Snapshot, Status } from '../types'
+import { detailLines, MASCOT_SCALE, mascot, picture, W } from './draw'
+import type { Mood } from './draw'
 import { ago, alerts, expandHome, isStale, parseStatus, sortCards, textBar, titleOf } from './format'
+import { folderName, isWrapUp, KEEP_MS, nameOf, oneLine, parseConversation, plain, recent, SESSIONS, shownState, wrapOf } from './sessions'
 
 const PANE = 'puppy-console'
 const REFRESH_MS = 60_000
+const MAX_NEEDS = 6
+const MAX_OTHERS = 5
 
 const snapshot = atom({ plugin: 'puppy-console', key: 'snapshot' } as const, null)
 
@@ -14,7 +18,7 @@ const errorText = (err: unknown) => (err instanceof Error ? err.message : String
 
 // Every *.json in the folder is one card. A file that does not parse becomes a problem line,
 // never a missing card without a word: the writer may be halfway through, or on an old format.
-export async function loadFolder($: EngineInterface, dir: string): Promise<Snapshot> {
+export async function loadFolder($: EngineInterface, dir: string): Promise<Omit<Snapshot, 'conversations'>> {
   const loadedAt = await $.clock.now()
   if (!dir) return { dir, cards: [], problems: [], dirError: 'no status folder set', loadedAt }
   let entries
@@ -38,14 +42,71 @@ export async function loadFolder($: EngineInterface, dir: string): Promise<Snaps
   return { dir, cards: sortCards(cards), problems, dirError: null, loadedAt }
 }
 
+// The conversations' files. A file older than the card shows is not read at all, so the folder
+// can grow without the refresh slowing down. One that does not parse (a write caught halfway)
+// keeps what the last read had, and is read again at the next refresh.
+async function loadConversations($: EngineInterface, dir: string, prev: Conversation[], now: number): Promise<Conversation[]> {
+  const out: Conversation[] = []
+  for (const f of await $.fs.list(dir).catch(() => [])) {
+    if (f.kind !== 'file' || !f.name.endsWith('.json') || f.name.startsWith('.')) continue
+    if (f.mtimeMs && now - f.mtimeMs > KEEP_MS) continue
+    try {
+      const c = parseConversation(await $.fs.read(`${dir}/${f.name}`))
+      if (`${c.id}.json` === f.name) out.push(c)
+    } catch {
+      const kept = prev.find(c => `${c.id}.json` === f.name)
+      if (kept) out.push(kept)
+    }
+  }
+  return recent(out, now)
+}
+
+// This conversation's own file, `~/.claude/console/sessions/<session id>.json`; only this
+// conversation writes it. `own` is what the file last said, kept by session id: /clear gives a
+// new id without a new session.start, and a reload starts the module over and reads it back.
+// Writes go one after another and never hold up the turn: a turn's hooks queue them and go on.
+let own: Conversation | null = null
+let writing: Promise<void> = Promise.resolve()
+function save($: EngineInterface, change: (c: Conversation) => Conversation, prompt = '') {
+  // The id is asked for now, not when the write's turn comes: a /clear in between must not
+  // send this turn's recap into the next conversation's file.
+  const asked = $.session.id()
+  writing = writing.then(async () => {
+    const [id, home, now] = await Promise.all([asked, $.env.get('HOME'), $.clock.now()])
+    if (!home) return
+    const path = `${home}/${SESSIONS}/${id}.json`
+    if (own?.id !== id) {
+      own = await $.fs.read(path).then(parseConversation).catch(() => null)
+      if (!own) {
+        // the repository's name (a worktree's main checkout), not the folder: no "console-sessions"
+        // for a worktree, no home folder's name for a conversation outside any repository
+        const [messages, repo] = await Promise.all([$.session.messages(), $.session.repo().catch(() => null)])
+        const title = nameOf(messages)
+        own = {
+          format: 'session-status', version: 1, id, updated: '', state: 'running',
+          title: title === 'new conversation' && plain(prompt) ? oneLine(plain(prompt), 60) : title,
+          project: repo ? folderName(repo.root) : undefined, recap: '', ask: null,
+        }
+      }
+    }
+    own = change({ ...own, updated: new Date(now).toISOString() })
+    await $.fs.write(path, `${JSON.stringify(own, null, 2)}\n`)
+  }).catch(() => {})
+}
+
 // One refresh at a time: the timer and the button share the running one,
 // so an older read can never finish last and overwrite a newer one.
 let running: Promise<void> | null = null
-function refresh($: EngineInterface, setting: string, isNotifying: boolean): Promise<void> {
+function refresh($: EngineInterface, setting: string, isNotifying: boolean, isShowing: boolean): Promise<void> {
   running ??= (async () => {
-    const dir = expandHome(setting.trim(), await $.env.get('HOME'))
+    const home = await $.env.get('HOME')
+    const dir = expandHome(setting.trim(), home)
     const prev = await read($, snapshot)
-    const next = await loadFolder($, dir)
+    const folder = await loadFolder($, dir)
+    const conversations = isShowing && home
+      ? await loadConversations($, `${home}/${SESSIONS}`, prev?.conversations ?? [], folder.loadedAt)
+      : []
+    const next: Snapshot = { ...folder, conversations }
     await update($, snapshot, () => next)
     // A toast shows in this conversation only, for ten seconds; each open conversation tells its own.
     if (isNotifying) for (const line of alerts(prev, next)) $.ui.toast(line, { timeoutMs: 10_000 })
@@ -73,19 +134,45 @@ function safeLines(s: Status): string[] {
 export const register: Register = (on, options) => {
   const setting = String(options.status_dir ?? '')
   const isNotifying = options.notify !== 'off'
+  const isWriting = options.conversations !== 'off'
 
   on('session.start', async ($, e, next) => {
-    await $.command.register({ name: 'console', description: 'Open the pipeline cards' })
-    void refresh($, setting, isNotifying)
+    await $.command.register({ name: 'console', description: 'Open the console: your conversations, then the pipelines' })
+    void refresh($, setting, isNotifying, isWriting)
     // Like setInterval in a component's mount: each tick reads the folder again and the pane redraws.
-    $.clock.every(REFRESH_MS, () => refresh($, setting, isNotifying))
+    $.clock.every(REFRESH_MS, () => refresh($, setting, isNotifying, isWriting))
+    return next(e)
+  })
+
+  // The main loop only: a subagent's turns are part of this conversation's turn.
+  // `wrap` is this turn's wrap_up, caught as it is called, so an older turn's is never used.
+  let wrap: ReturnType<typeof wrapOf> = null
+  on('turn.start', async ($, e, next) => {
+    if (isWriting && e.agentId === undefined) {
+      wrap = null
+      save($, c => ({ ...c, state: 'running', ask: null }), e.text)
+    }
+    return next(e)
+  })
+
+  on('tool.call', async ($, e, next) => {
+    if (isWriting && e.agentId === undefined && isWrapUp(e.tool)) wrap = wrapOf(e as Record<string, unknown>) ?? wrap
+    return next(e)
+  })
+
+  on('turn.complete', async ($, e, next) => {
+    if (isWriting && e.agentId === undefined) {
+      const w = wrap
+      const state = e.reason === 'error' || e.reason === 'refusal' ? 'error' : w?.ask ? 'waiting' : 'done'
+      save($, c => ({ ...c, state, recap: w?.recap || oneLine(e.answer, 200) || c.recap, ask: w?.ask ?? null }))
+    }
     return next(e)
   })
 
   on('command.run', { command: 'console' }, async $ => {
-    await refresh($, setting, isNotifying)
+    await refresh($, setting, isNotifying, isWriting)
     await $.ui.open({ id: PANE, title: 'console' })
-    return { text: 'pipeline cards opened.' }
+    return { text: 'console opened.' }
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
@@ -96,6 +183,9 @@ export const register: Register = (on, options) => {
     if (!snap) return <Text dimColor>loading…</Text>
 
     const hasSvg = e.surface !== 'terminal' && 'Svg' in ui
+    // the puppy types while a conversation is running, sits while one waits for you, else sleeps
+    const shown = snap.conversations.map(c => shownState(c, now))
+    const mood: Mood = shown.includes('running') ? 'typing' : shown.includes('waiting') || shown.includes('error') ? 'sitting' : 'sleeping'
 
     const card = (s: Status) => {
       const stale = isStale(s, now)
@@ -132,12 +222,53 @@ export const register: Register = (on, options) => {
       )
     }
 
+    // Always first: the conversations that wait for you, each with where it stands and what it asks.
+    // The rest get one quiet line each.
+    const conversationsCard = (list: Conversation[]) => {
+      const needs = list.filter(c => ['waiting', 'error'].includes(shownState(c, now)))
+      const others = list.filter(c => !needs.includes(c))
+      const running = others.filter(c => shownState(c, now) === 'running').length
+      const since = (c: Conversation) => `${c.project ? `${c.project} · ` : ''}${ago(now - Date.parse(c.updated))}`
+      return (
+        <Box key="conversations" flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap="xs">
+          <Box flexDirection="row" justifyContent="space-between">
+            <Text weight="semibold">conversations</Text>
+            <Text dimColor>
+              {needs.length > 0 ? <Text color="warning">{needs.length} waiting</Text> : 'none waiting'}
+              {running > 0 ? ` · ${running} running` : ''}
+            </Text>
+          </Box>
+          {needs.slice(0, MAX_NEEDS).map(c => (
+            <Box key={`c:${c.id}`} flexDirection="column">
+              <Text>{c.title} <Text dimColor>· {since(c)}</Text></Text>
+              {c.recap && <Text dimColor>{c.recap}</Text>}
+              {c.state === 'error'
+                ? <Text color="error">the last turn ended on an error</Text>
+                : c.ask && <Text color="warning">→ {c.ask}</Text>}
+            </Box>
+          ))}
+          {needs.length > MAX_NEEDS && <Text dimColor>and {needs.length - MAX_NEEDS} more waiting</Text>}
+          {others.slice(0, MAX_OTHERS).map(c => (
+            <Text key={`c:${c.id}`} dimColor>· {c.title} · {shownState(c, now)} · {since(c)}</Text>
+          ))}
+          {others.length > MAX_OTHERS && <Text dimColor>· and {others.length - MAX_OTHERS} more in the last 3 days</Text>}
+        </Box>
+      )
+    }
+
     return (
       <Box flexDirection="column" gap={1}>
-        <Box flexDirection="row" justifyContent="space-between">
-          <Text dimColor>checked {ago(now - snap.loadedAt)}</Text>
-          <Button key="refresh" label="refresh" hotkey="r" onPress={() => refresh($, setting, isNotifying)} />
+        <Box flexDirection="row" justifyContent="space-between" alignItems="center">
+          <Box flexDirection="row" alignItems="center" gap={1}>
+            {/* the terminal gets the puppy from baibai-brand's block output, once it has one */}
+            {hasSvg && 'Svg' in ui && (
+              <ui.Svg source={mascot(mood)} alt={`the puppy ${mood} at its laptop`} width={34 * MASCOT_SCALE} height={26 * MASCOT_SCALE} />
+            )}
+            <Text dimColor>checked {ago(now - snap.loadedAt)}</Text>
+          </Box>
+          <Button key="refresh" label="refresh" hotkey="r" onPress={() => refresh($, setting, isNotifying, isWriting)} />
         </Box>
+        {snap.conversations.length > 0 && conversationsCard(snap.conversations)}
         {snap.dirError && (
           <Box flexDirection="column">
             <Text color="error">can't read the status folder: {snap.dirError}</Text>

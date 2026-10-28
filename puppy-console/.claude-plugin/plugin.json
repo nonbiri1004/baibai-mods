@@ -1,7 +1,7 @@
 {
   "name": "puppy-console",
-  "version": "0.3.1",
-  "description": "a pane with one card per production pipeline, read from small status files",
+  "version": "0.4.0",
+  "description": "a pane with your conversations first, then one card per production pipeline, read from small status files",
   "types": "./types/index.d.ts",
   "author": {
     "name": "lofi puppy",
@@ -10,7 +10,13 @@
   "homepage": "https://github.com/nonbiri1004/puppy-mods/tree/main/puppy-console",
   "repository": "https://github.com/nonbiri1004/puppy-mods",
   "license": "MIT",
-  "keywords": ["pipeline", "status", "dashboard", "puppy", "lofi"],
+  "keywords": [
+    "pipeline",
+    "status",
+    "dashboard",
+    "puppy",
+    "lofi"
+  ],
   "userConfig": {
     "status_dir": {
       "type": "string",
@@ -23,7 +29,20 @@
       "title": "Notices",
       "description": "on shows a short notice when a card turns waiting, error or quiet, or gets a new waiting item; off shows none.",
       "default": "on",
-      "options": ["on", "off"]
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "conversations": {
+      "type": "string",
+      "title": "Conversations",
+      "description": "on: each conversation writes a short file about itself into ~/.claude/console/sessions/ (this computer only) after every turn, and the pane shows them first. off: it writes nothing.",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
     }
   }
 }

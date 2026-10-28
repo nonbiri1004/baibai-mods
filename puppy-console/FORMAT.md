@@ -1,6 +1,6 @@
 # the status file format
 
-every pipeline writes one small json file into one shared folder. the mod reads every `*.json` in that folder and draws one card per file. the mod never runs a pipeline and never writes into the folder.
+every pipeline writes one small json file into one shared folder. the mod reads every `*.json` in that folder and draws one card per file. the mod never runs a pipeline and never writes into the folder. (it keeps its own conversation files elsewhere; see conversations, below.)
 
 ```
 <status folder>/
@@ -59,3 +59,23 @@ the mod draws these when `pipeline` matches; anything else in `detail` is ignore
 
 - `music`: `{ comfy: { up, running, pending }, generating, batches: [{ name, strip, est_usable, target_usable, generated, ok, needs_listen, rejected, errors, avg_gen_sec, status_tail }] }`. `strip` has one letter per song: `o` ok, `l` to hear, `r` rejected, `x` left out, `e` failed, `?` being checked.
 - `ai-video`: `{ spend_usd, cap_usd, jobs: [{ job, stage, spend_usd, cap_usd, updated, next }] }`. `stage` is `plan`, `clips`, `voice`, `compose`, `final` or `done`; the card groups jobs by stage.
+
+## conversations
+
+the mod itself writes one more kind of file, one per conversation, in `~/.claude/console/sessions/<session id>.json`: on this computer only, never in the status folder, because it holds what you typed. only that conversation writes its file, one write after another, and never while holding up a turn. the pane reads them for the first card. a file there that does not parse (caught halfway through a write) keeps what the last read had.
+
+```json
+{
+  "format": "session-status",
+  "version": 1,
+  "id": "4f0c…",
+  "updated": "2026-10-27T12:00:00.000Z",
+  "state": "waiting",
+  "title": "the first line you typed",
+  "project": "puppy-mods",
+  "recap": "what is now true and where it stands",
+  "ask": "the question the last turn left you, or null"
+}
+```
+
+`state` is `running` (a turn is going), `waiting` (the last turn asked you something), `done` or `error`. a `running` file older than 30 minutes is shown as `done`: the conversation closed mid-turn. files older than three days are not read or shown; they stay in the folder.

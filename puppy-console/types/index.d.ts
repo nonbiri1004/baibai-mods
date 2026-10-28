@@ -51,9 +51,27 @@ export type VideoDetail = { spend_usd?: number; cap_usd?: number; jobs?: VideoJo
 // A file in the folder that is not a card, and why.
 export type Problem = { file: string; reason: string }
 
+// One conversation's file in `<status folder>/sessions/` (format "session-status", version 1).
+export type ConversationState = 'running' | 'waiting' | 'done' | 'error'
+export type Conversation = {
+  format: 'session-status'
+  version: 1
+  id: string
+  updated: string
+  state: ConversationState
+  title: string
+  project?: string
+  host?: string
+  recap: string
+  // the question the last turn left you, when it left one
+  ask: string | null
+}
+
 export type Snapshot = {
   dir: string
   cards: Status[]
+  // the conversations of the last few days, sorted for the card; empty when none wrote yet
+  conversations: Conversation[]
   problems: Problem[]
   // the folder itself could not be read (missing, not set)
   dirError: string | null
