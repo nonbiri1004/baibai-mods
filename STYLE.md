@@ -19,7 +19,7 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
   ```
 
 - The card header: the name on the left in `weight="semibold"`, and on the right, dim, the state, a count or a time, joined by ` · `.
-- A pane with only one card may leave its header out: the first row already says what it is (`•ᴥ• 3 to-do`).
+- A pane with only one card may leave its header out: the first row already says what it is (`3 to-do`).
 - Give each card a `key` that starts with `card-`, so tests can find it.
 - Lists inside a card get a dim label above each group, not another border. One border level only.
 - Extra lists (done items, old things) stay folded below the cards: a dim button `▸ done 3`, `▾` when open.
@@ -47,6 +47,8 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
 - Pixel art keeps `shape-rendering="crispEdges"`.
 - The puppy's drawing comes from baibai-brand (generated, see `brand.lock.json`). Never draw or edit the puppy by hand here.
 - These mods are coding tools: the puppy keeps you company like a mascot beside you. It wears **no headphones** here; its prop is a small laptop. It types at the laptop (`typing0..5`), sits when idle and sleeps when nothing is going on. All frames come from baibai-brand's `puppy-svg.ts` (bare frames only).
+- Where the surface has no `Svg` (the terminal), draw the same puppy from baibai-brand's `puppy-blocks.ts`: block characters, two pixels to a character, the way Claude Code draws its mascot. 34 columns × 13 rows, one still frame per mood (`typing0`, `sit`, `sleep0`). Its runs carry the puppy's own hex colors: the one place a `Text` may use hex, since the brand fixes those colors.
+- Never a text face (`•ᴥ•` and the like) and never a smaller puppy: a scaled-down puppy is a new drawing. If 13 rows don't fit, leave the puppy out.
 - Our own drawings use no orange (the orange is only for headphones, which these mods don't draw).
 - Motion is slow and small (a blink, breathing, floating notes). Nothing flashes.
 

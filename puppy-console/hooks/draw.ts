@@ -3,6 +3,8 @@
 // night, low contrast. The puppy is the bare one (no headphones): a coding tool.
 import type { MusicDetail, Stage, Status, VideoDetail, VideoJob } from '../types'
 import { sit, sitBlink, sleep0, sleep1, typing0, typing1, typing2, typing3, typing4, typing5 } from './puppy'
+import { sit as blockSit, sleep0 as blockSleep0, typing0 as blockTyping0 } from './puppy-blocks'
+import type { BlockRun } from './puppy-blocks'
 
 export const W = 640
 
@@ -219,3 +221,9 @@ export function mascot(mood: Mood): string {
   }).join('')
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${34 * MASCOT_SCALE}" height="${26 * MASCOT_SCALE}" viewBox="0 0 34 26" shape-rendering="crispEdges">${body}</svg>`
 }
+
+// The same puppy for a surface with no Svg (the terminal), from baibai-brand's block output:
+// each character holds two pixels stacked, as Claude Code draws its mascot. One still frame per
+// mood: redrawing the pane a few times a second would flicker, and the puppy moves slowly anyway.
+const STILLS: Record<Mood, BlockRun[][]> = { typing: blockTyping0, sitting: blockSit, sleeping: blockSleep0 }
+export const stillBlocks = (mood: Mood): BlockRun[][] => STILLS[mood]

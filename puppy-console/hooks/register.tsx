@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Conversation, Problem, Snapshot, Status } from '../types'
-import { detailLines, MASCOT_SCALE, mascot, picture, W } from './draw'
+import { detailLines, MASCOT_SCALE, mascot, picture, stillBlocks, W } from './draw'
 import type { Mood } from './draw'
 import { ago, alerts, expandHome, isStale, parseStatus, sortCards, textBar, titleOf } from './format'
 import { folderName, isWrapUp, KEEP_MS, nameOf, oneLine, parseConversation, plain, recent, SESSIONS, shownState, wrapOf } from './sessions'
@@ -258,9 +258,18 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column" gap={1}>
+        {/* no Svg here (the terminal): the puppy in block characters, on its own rows above */}
+        {!hasSvg && (
+          <Box key="puppy" flexDirection="column">
+            {stillBlocks(mood).map((runs, i) => (
+              <Text key={`puppy-${i}`}>
+                {runs.map(([text, fg, bg]) => <Text color={fg ?? undefined} backgroundColor={bg ?? undefined}>{text}</Text>)}
+              </Text>
+            ))}
+          </Box>
+        )}
         <Box flexDirection="row" justifyContent="space-between" alignItems="center">
           <Box flexDirection="row" alignItems="center" gap={1}>
-            {/* the terminal gets the puppy from baibai-brand's block output, once it has one */}
             {hasSvg && 'Svg' in ui && (
               <ui.Svg source={mascot(mood)} alt={`the puppy ${mood} at its laptop`} width={34 * MASCOT_SCALE} height={26 * MASCOT_SCALE} />
             )}
