@@ -1,4 +1,8 @@
 import { expect, test } from 'claude-code/testing'
+import type { FoundElement } from 'claude-code/testing'
+
+import { typing0 as blockFrame } from '../hooks/puppy-blocks'
+import type { BlockRun } from '../hooks/puppy-blocks'
 
 import type { View } from '../types'
 
@@ -15,6 +19,20 @@ const PANE = {
     view: {},
   },
 } as const
+
+// FoundElement.children are drawn trees, not FoundElements: { type, props?, children? }, strings as leaves
+type Drawn = { type: string; props?: Record<string, unknown>; children?: unknown[] }
+const isDrawn = (c: unknown): c is Drawn => typeof c === 'object' && c !== null && typeof (c as { type?: unknown }).type === 'string'
+const drawnIn = (children: unknown[] | undefined): Drawn[] => (children ?? []).filter(isDrawn)
+const hexOr = (v: unknown): string | null => (typeof v === 'string' ? v : null)
+// the puppy Box's rows: each row a Text, each run read back as [text, fg, bg] like puppy-blocks.ts
+const rowsOf = (puppy: FoundElement | undefined): Drawn[] => drawnIn(puppy?.children)
+const drawnRuns = (puppy: FoundElement | undefined): BlockRun[][] =>
+  rowsOf(puppy).map(row => drawnIn(row.children).map((run): BlockRun => [
+    (run.children ?? []).filter((c): c is string => typeof c === 'string').join(''),
+    hexOr(run.props?.color),
+    hexOr(run.props?.backgroundColor),
+  ]))
 
 const VIEW: View = {
   skills: [
@@ -41,13 +59,10 @@ test('the pane: a card per place, the first sentence, a clock on the scheduled o
     expect((await ui.find({ type: 'Text', text: /only in garden/ }))?.text).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /⏰ 9:00/ }))?.text).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: /Never two/ })).toBeFalsy()
-    // the typing puppy where pictures draw, the face on the terminal
-    if (surface === 'terminal') {
-      expect((await ui.find({ type: 'Text', text: /•ᴥ•/ }))?.text).toBeTruthy()
-    } else {
-      const pic = await ui.find({ type: 'Svg' })
-      expect(pic).toBeTruthy()
+    if (surface !== 'terminal') {
+      expect((await ui.find({ type: 'Svg' }))?.props.alt).toBe('the puppy typing at its laptop')
     }
+    expect((await ui.findAll({ type: 'Text' })).map(t => t.text).join(' ')).not.toContain('ᴥ')
     await ui.unmount()
   }
 })
@@ -90,4 +105,38 @@ test('unfolded: the claude.ai card', async ($, on) => {
   expect(await ui.find({ type: 'Box', key: 'card-synced' })).toBeTruthy()
   expect((await ui.find({ type: 'Text', text: /no skills of your own yet/ }))?.text).toBeTruthy()
   await ui.unmount()
+})
+
+test('terminal: the full still puppy is above the header only when tall and wide enough', async ($, on) => {
+  on('state.get', () => ({ value: { value: VIEW, version: 1 } }))
+  for (const [bodyRows, bodyColumns] of [[40, 80], [26, 80], [40, 34], [25, 80], [20, 80], [40, 30]] as const) {
+    const ui = await $.ui.mount({
+      ...PANE, surface: 'terminal',
+      props: { ...PANE.props, bodyColumns, scroll: { offset: 0, bodyRows } },
+    })
+    const texts = await ui.findAll({ type: 'Text' })
+    const puppy = await ui.find({ type: 'Box', key: 'puppy' })
+    if (bodyRows >= 26 && bodyColumns >= 34) {
+      expect(rowsOf(puppy).map(row => row.type)).toEqual(Array(13).fill('Text'))
+      expect(drawnRuns(puppy)).toEqual(blockFrame)
+      expect(texts[0]?.text).toBe(blockFrame[0]?.map(([text]) => text).join(''))
+      expect(texts.findIndex(t => t.text.includes('2 skills'))).toBeGreaterThan(12)
+    } else {
+      // too short, or so narrow each row would wrap: no puppy at all
+      expect(puppy).toBeFalsy()
+      expect(texts[0]?.text).toContain('2 skills')
+    }
+    expect(await ui.find({ type: 'Svg' })).toBeFalsy()
+    expect(texts.map(t => t.text).join(' ')).not.toContain('ᴥ')
+    await ui.unmount()
+  }
+})
+
+test('loading is plain text on every surface', async ($, on) => {
+  on('state.get', () => ({ value: { value: { ...VIEW, at: null }, version: 1 } }))
+  for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect((await ui.findAll({ type: 'Text' })).map(t => t.text)).toEqual(['loading…'])
+    await ui.unmount()
+  }
 })

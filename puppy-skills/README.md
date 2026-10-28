@@ -2,10 +2,10 @@
 
 a quiet pane that lists the claude code skills you have, and where each one works.
 
-type `/my-skills` (`/skills` is claude code's own). on the desktop the puppy sits at the top, typing at its little laptop; the terminal shows `•ᴥ•`. the pane only reads files: it never runs a skill and never shows what is running (that is `puppy-console`'s job).
+type `/my-skills` (`/skills` is claude code's own). on the desktop the puppy moves at the top, typing at its little laptop. in the terminal, it is a still puppy in block characters, 34 columns × 13 rows, above the header. it is left out when the pane is shorter than 26 rows or narrower than 34 columns. the pane only reads files: it never runs a skill and never shows what is running (that is `puppy-console`'s job).
 
 ```
-•ᴥ• 4 skills · looked 10:02                     refresh
+4 skills · looked 10:02                     refresh
 ╭──────────────────────────────────────────────────────╮
 │ yours                                 anywhere · 2   │
 │ ▸  nap Finds a sunny spot.                           │

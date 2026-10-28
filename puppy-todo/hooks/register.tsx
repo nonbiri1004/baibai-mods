@@ -2,9 +2,13 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { Item, View } from '../types'
-import { FACES, deleteItem, listOf, newId, parseItem, projectOf, reopen, tick } from './todo'
+import { mascot, stillBlocks } from './draw'
+import { deleteItem, listOf, newId, parseItem, projectOf, reopen, tick } from './todo'
 
 const PANE = 'puppy-todo'
+const PUPPY_MIN_ROWS = 26
+// the block frame is 34 columns; narrower, each row wraps and breaks the drawing
+const PUPPY_COLUMNS = 34
 
 const EMPTY: View = { items: [], isShowingDone: false, at: null, notes: [] }
 const view = atom({ plugin: 'puppy-todo', key: 'view' } as const, EMPTY)
@@ -130,26 +134,39 @@ export const register: Register = on => {
   })
 
   on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
-    const table = $.ui.resolve(e)
-    const { Box, Text, Button } = table
+    const ui = $.ui.resolve(e)
+    const { Box, Text, Button } = ui
     // the phone app draws no field yet
-    const Input = 'Input' in table ? table.Input : undefined
+    const Input = 'Input' in ui ? ui.Input : undefined
     // a view kept from an older version lacks the newer fields (the session's state outlives a reload)
     const v: View = { ...EMPTY, ...(await read($, view)) }
     if (v.at === null) {
-      return <Text dimColor>{FACES.calm} sniffing around…</Text>
+      return <Text dimColor>loading…</Text>
     }
     const { open, done } = listOf(v.items, v.at)
+    const mood = open.length === 0 ? 'sleeping' : 'sitting'
+    const hasSvg = e.surface !== 'terminal' && 'Svg' in ui
     // the ✕ shows when the pointer is on the row (the desktop); with no pointer it always shows
     const hasPointer = e.surface === 'desktop'
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Box flexDirection="row" justifyContent="space-between" gap={1}>
-          <Text>
-            {open.length === 0 ? FACES.happy : FACES.calm}
-            <Text dimColor> {open.length === 0 ? 'all clear' : `${open.length} to-do`}</Text>
-          </Text>
+        {!hasSvg && e.props.scroll.bodyRows >= PUPPY_MIN_ROWS && e.props.bodyColumns >= PUPPY_COLUMNS && (
+          <Box key="puppy" flexDirection="column">
+            {stillBlocks(mood).map((runs, i) => (
+              <Text key={`puppy-${i}`}>
+                {runs.map(([text, fg, bg]) => <Text color={fg ?? undefined} backgroundColor={bg ?? undefined}>{text}</Text>)}
+              </Text>
+            ))}
+          </Box>
+        )}
+        <Box flexDirection="row" justifyContent="space-between" alignItems="center" gap={1}>
+          <Box flexDirection="row" alignItems="center" gap={1}>
+            {hasSvg && 'Svg' in ui && (
+              <ui.Svg source={mascot(mood)} alt={`the puppy ${mood}`} width={68} height={52} />
+            )}
+            <Text dimColor>{open.length === 0 ? 'all clear' : `${open.length} to-do`}</Text>
+          </Box>
           <Button key="refresh" label="refresh" dimColor onPress={() => load($)} />
         </Box>
 
