@@ -1,6 +1,6 @@
 {
   "name": "puppy-skills",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "a quiet pane listing your claude code skills, where each one works, and which ones a schedule uses",
   "types": "./types/index.d.ts",
   "author": {

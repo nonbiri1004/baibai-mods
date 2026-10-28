@@ -25,6 +25,7 @@ const VIEW: View = {
     },
   ],
   openIds: [],
+  isShowingSynced: false,
   at: Date.parse('2026-10-27T10:00:00Z'),
   notes: [],
 }
@@ -68,5 +69,25 @@ test('a long first sentence is cut, not the whole paragraph', async ($, on) => {
   const row = (await ui.findAll({ type: 'Text' })).map(t => t.text).find(t => t.startsWith('docs'))
   expect(row?.endsWith('…')).toBe(true)
   expect((row?.length ?? 0) < 130).toBe(true)
+  await ui.unmount()
+})
+
+const SYNCED = { id: 'synced::pdf', name: 'pdf', description: 'Reads PDFs.', where: 'synced', group: '', dir: '', uses: [] } as const
+
+test('claude.ai skills stay folded below yours, and are not counted as yours', async ($, on) => {
+  on('state.get', () => ({ value: { value: { ...VIEW, skills: [...VIEW.skills, SYNCED] }, version: 1 } }))
+  const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
+  expect((await ui.find({ type: 'Text', text: /2 skills/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /^yours$/ }))?.text).toBeTruthy()
+  expect((await ui.find({ type: 'Button', key: 'show-synced' }))?.text).toContain('from claude.ai 1')
+  expect(await ui.find({ type: 'Box', key: 'card-synced' })).toBeFalsy()
+  await ui.unmount()
+})
+
+test('unfolded: the claude.ai card', async ($, on) => {
+  on('state.get', () => ({ value: { value: { ...VIEW, skills: [SYNCED], isShowingSynced: true }, version: 1 } }))
+  const ui = await $.ui.mount({ ...PANE, surface: 'terminal' })
+  expect(await ui.find({ type: 'Box', key: 'card-synced' })).toBeTruthy()
+  expect((await ui.find({ type: 'Text', text: /no skills of your own yet/ }))?.text).toBeTruthy()
   await ui.unmount()
 })
