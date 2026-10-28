@@ -155,7 +155,8 @@ export const register: Register = on => {
           <Box key="puppy" flexDirection="column">
             {stillBlocks(mood).map((runs, i) => (
               <Text key={`puppy-${i}`}>
-                {runs.map(([text, fg, bg]) => <Text color={fg ?? undefined} backgroundColor={bg ?? undefined}>{text}</Text>)}
+                {/* a blank row is one space: an empty Text takes no row, and the puppy must keep all 13 */}
+                {runs.length ? runs.map(([text, fg, bg]) => <Text color={fg ?? undefined} backgroundColor={bg ?? undefined}>{text}</Text>) : ' '}
               </Text>
             ))}
           </Box>

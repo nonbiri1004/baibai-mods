@@ -27,6 +27,8 @@ const drawnIn = (children: unknown[] | undefined): Drawn[] => (children ?? []).f
 const hexOr = (v: unknown): string | null => (typeof v === 'string' ? v : null)
 // the puppy Box's rows: each row a Text, each run read back as [text, fg, bg] like puppy-blocks.ts
 const rowsOf = (puppy: FoundElement | undefined): Drawn[] => drawnIn(puppy?.children)
+const textIn = (node: unknown): string =>
+  typeof node === 'string' ? node : ((node as { children?: unknown[] })?.children ?? []).map(textIn).join('')
 const drawnRuns = (puppy: FoundElement | undefined): BlockRun[][] =>
   rowsOf(puppy).map(row => drawnIn(row.children).map((run): BlockRun => [
     (run.children ?? []).filter((c): c is string => typeof c === 'string').join(''),
@@ -119,8 +121,10 @@ test('terminal: the full still puppy is above the header only when tall and wide
     const puppy = await ui.find({ type: 'Box', key: 'puppy' })
     if (bodyRows >= 26 && bodyColumns >= 34) {
       expect(rowsOf(puppy).map(row => row.type)).toEqual(Array(13).fill('Text'))
+      // a blank row is a space: an empty Text takes no row, so the puppy would shrink and the pane jump
+      expect(rowsOf(puppy).filter(row => textIn(row) === '')).toHaveLength(0)
       expect(drawnRuns(puppy)).toEqual(blockFrame)
-      expect(texts[0]?.text).toBe(blockFrame[0]?.map(([text]) => text).join(''))
+      expect(texts[0]?.text).toBe(blockFrame[0]?.map(([text]) => text).join('') || ' ')
       expect(texts.findIndex(t => t.text.includes('2 to-do'))).toBeGreaterThan(12)
     } else {
       // too short, or so narrow each row would wrap: no puppy at all
