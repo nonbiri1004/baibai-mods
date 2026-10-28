@@ -41,7 +41,7 @@ test('cards: personal first, then repos, then plugins', () => {
     id: `${where}:${group}:${name}`, name, description: '', where, group, dir: '', uses: [],
   })
   const cards = cardsOf([s('plugin', 'toys', 'ball'), s('repo', 'garden', 'dig'), s('personal', '', 'nap')])
-  expect(cards.map(c => `${c.title}|${c.scope}`)).toEqual(['personal|anywhere', 'garden|only in garden', 'toys|plugin'])
+  expect(cards.map(c => `${c.title}|${c.scope}`)).toEqual(['yours|anywhere', 'garden|only in garden', 'toys|plugin'])
 })
 
 test('cut: by columns, a CJK character is two', () => {

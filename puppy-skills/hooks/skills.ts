@@ -120,7 +120,7 @@ export function usesOf(tasks: Task[], skill: { name: string; dir: string }): Use
 // the cards in order: personal, then each repo, then each plugin, names a→z inside
 export type Card = { key: string; title: string; scope: string; skills: Skill[] }
 
-const ORDER: Where[] = ['personal', 'repo', 'plugin']
+const ORDER: Where[] = ['personal', 'repo', 'plugin', 'synced']
 
 export function cardsOf(skills: Skill[]): Card[] {
   const cards = new Map<string, Card>()
@@ -131,8 +131,9 @@ export function cardsOf(skills: Skill[]): Card[] {
   for (const s of sorted) {
     const key = `card-${s.where}${s.group ? `-${s.group}` : ''}`
     if (!cards.has(key)) {
-      const title = s.where === 'personal' ? 'personal' : s.group
-      const scope = s.where === 'personal' ? 'anywhere' : s.where === 'repo' ? `only in ${s.group}` : 'plugin'
+      const title = s.where === 'personal' ? 'yours' : s.where === 'synced' ? 'from claude.ai' : s.group
+      const scope =
+        s.where === 'personal' || s.where === 'synced' ? 'anywhere' : s.where === 'repo' ? `only in ${s.group}` : 'plugin'
       cards.set(key, { key, title, scope, skills: [] })
     }
     cards.get(key)?.skills.push(s)

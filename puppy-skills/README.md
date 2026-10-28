@@ -7,7 +7,7 @@ type `/my-skills` (`/skills` is claude code's own). on the desktop the puppy sit
 ```
 •ᴥ• 4 skills · looked 10:02                     refresh
 ╭──────────────────────────────────────────────────────╮
-│ personal                              anywhere · 2   │
+│ yours                                 anywhere · 2   │
 │ ▸  nap Finds a sunny spot.                           │
 │ ▸  walk-plan Plans the morning walk.                 │
 ╰──────────────────────────────────────────────────────╯
@@ -21,6 +21,7 @@ type `/my-skills` (`/skills` is claude code's own). on the desktop the puppy sit
 │ toys                                     plugin · 1  │
 │ ▸  ball Throws the ball.                             │
 ╰──────────────────────────────────────────────────────╯
+▸ from claude.ai 11
 ```
 
 (made-up skills, to show the shape.)
@@ -29,8 +30,9 @@ type `/my-skills` (`/skills` is claude code's own). on the desktop the puppy sit
 
 | card | read from | works in |
 | --- | --- | --- |
-| personal | `~/.claude/skills/**/SKILL.md` | every conversation |
+| yours | `~/.claude/skills/**/SKILL.md` | every conversation |
 | one per repo | `~/dev/**/.claude/skills/*/SKILL.md` (5 folders deep; skips `node_modules` and dot folders like `.claude/worktrees`) | only conversations opened in that repo |
+| from claude.ai (folded) | `~/.claude/skills/synced/…`: anthropic's skills the app copies from your claude.ai account, not ones you wrote | every conversation |
 | one per plugin | `<installPath>/skills/*/SKILL.md` for each plugin in `~/.claude/plugins/installed_plugins.json` | wherever the plugin is on |
 
 each row is the skill's `name` and the first sentence of its `description`. press `▸` to see all of it.

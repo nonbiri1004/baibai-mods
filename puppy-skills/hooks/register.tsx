@@ -4,13 +4,13 @@ import type { EngineInterface, FsEntry, Register } from 'claude-code'
 import type { Skill, View, Where } from '../types'
 import { typingPuppy } from './draw'
 import { FACE, bodyOf, cardsOf, cut, firstSentence, parseSkill, usesOf, whenOf } from './skills'
-import type { Task } from './skills'
+import type { Card, Task } from './skills'
 
 const PANE = 'puppy-skills'
 // how long a first sentence may run (Latin columns; a CJK character is two) where rows wrap
 const SENTENCE = 110
 
-const EMPTY: View = { skills: [], openIds: [], at: null, notes: [] }
+const EMPTY: View = { skills: [], openIds: [], isShowingSynced: false, at: null, notes: [] }
 const view = atom({ plugin: 'puppy-skills', key: 'view' } as const, EMPTY)
 
 // how deep under ~/dev a repo's .claude folder may be (~/dev/Projects/<owner>/<repo>/.claude is 4)
@@ -150,7 +150,10 @@ async function load($: EngineInterface): Promise<void> {
     })
 
   const [personal, repos, plugins, tasks] = await Promise.all([
-    tried('~/.claude/skills', findSkillFiles($, `${home}/.claude/skills`, 3).then(fs => fs.map(f => toSkill(f, 'personal', '')))),
+    tried('~/.claude/skills', findSkillFiles($, `${home}/.claude/skills`, 3).then(fs =>
+        // skills/synced/ is what the app copies from claude.ai: Anthropic's, not ones you wrote
+        fs.map(f => toSkill(f, f.dir.includes('/.claude/skills/synced/') ? 'synced' : 'personal', '')),
+      )),
     tried(
       '~/dev',
       findRepoSkillDirs($, `${home}/dev`, DEPTH).then(async dirs =>
@@ -215,6 +218,57 @@ export const register: Register = on => {
         openIds: was.openIds.includes(id) ? was.openIds.filter(i => i !== id) : [...was.openIds, id],
       }))
 
+    // your own skills (yours, a repo's, a plugin's) are cards; anthropic's from claude.ai stay folded below
+    const mine = v.skills.filter(s => s.where !== 'synced')
+    const synced = v.skills.filter(s => s.where === 'synced')
+    const drawCard = (card: Card) => (
+      <Box key={card.key} flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap="xs">
+        <Box flexDirection="row" justifyContent="space-between" gap={1}>
+          <Text weight="semibold">{card.title}</Text>
+          <Text dimColor>
+            {card.scope} · {card.skills.length}
+          </Text>
+        </Box>
+        {card.skills.map(s => {
+          const isOpen = v.openIds.includes(s.id)
+          const time = s.uses.map(u => u.when).find(w => w !== '') ?? ''
+          const right = s.uses.length > 0 ? `⏰${time ? ` ${time.split(' ')[0]}` : ''}` : ''
+
+          return (
+            <Box key={`s-${s.id}`} flexDirection="column">
+              <Box flexDirection="row" alignItems="flex-start" gap={1}>
+                <Box width={3} flexShrink={0}>
+                  <Button key={`open-${s.id}`} label={isOpen ? '▾' : '▸'} plain dimColor onPress={() => toggle(s.id)} />
+                </Box>
+                <Box flexGrow={1} flexShrink={1} minWidth={0}>
+                  <Text>
+                    {s.name}
+                    <Text dimColor> {cut(firstSentence(s.description), Math.max(8, cols - s.name.length - 5 - right.length))}</Text>
+                  </Text>
+                </Box>
+                {right ? (
+                  <Box flexShrink={0}>
+                    <Text dimColor>{right}</Text>
+                  </Box>
+                ) : null}
+              </Box>
+              {isOpen ? (
+                <Box flexDirection="column" paddingLeft={4}>
+                  <Text dimColor>{s.description || 'no description.'}</Text>
+                  {s.uses.map(u => (
+                    <Text key={`use-${s.id}-${u.task}`} dimColor>
+                      ⏰ {u.task}
+                      {u.when ? ` · ${u.when}` : ''}
+                    </Text>
+                  ))}
+                </Box>
+              ) : null}
+            </Box>
+          )
+        })}
+      </Box>
+    )
+
     return (
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="row" justifyContent="space-between" gap={1}>
@@ -225,61 +279,27 @@ export const register: Register = on => {
               <Text>{FACE}</Text>
             )}
             <Text dimColor>
-              {v.skills.length} skills · looked {clock(v.at)}
+              {mine.length} skills · looked {clock(v.at)}
             </Text>
           </Box>
           <Button key="refresh" label="refresh" dimColor onPress={() => load($)} />
         </Box>
 
-        {cardsOf(v.skills).map(card => (
-          <Box key={card.key} flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap="xs">
-            <Box flexDirection="row" justifyContent="space-between" gap={1}>
-              <Text weight="semibold">{card.title}</Text>
-              <Text dimColor>
-                {card.scope} · {card.skills.length}
-              </Text>
-            </Box>
-            {card.skills.map(s => {
-              const isOpen = v.openIds.includes(s.id)
-              const time = s.uses.map(u => u.when).find(w => w !== '') ?? ''
-              const right = s.uses.length > 0 ? `⏰${time ? ` ${time.split(' ')[0]}` : ''}` : ''
+        {cardsOf(mine).map(drawCard)}
 
-              return (
-                <Box key={`s-${s.id}`} flexDirection="column">
-                  <Box flexDirection="row" alignItems="flex-start" gap={1}>
-                    <Box width={3} flexShrink={0}>
-                      <Button key={`open-${s.id}`} label={isOpen ? '▾' : '▸'} plain dimColor onPress={() => toggle(s.id)} />
-                    </Box>
-                    <Box flexGrow={1} flexShrink={1} minWidth={0}>
-                      <Text>
-                        {s.name}
-                        <Text dimColor> {cut(firstSentence(s.description), Math.max(8, cols - s.name.length - 5 - right.length))}</Text>
-                      </Text>
-                    </Box>
-                    {right ? (
-                      <Box flexShrink={0}>
-                        <Text dimColor>{right}</Text>
-                      </Box>
-                    ) : null}
-                  </Box>
-                  {isOpen ? (
-                    <Box flexDirection="column" paddingLeft={4}>
-                      <Text dimColor>{s.description || 'no description.'}</Text>
-                      {s.uses.map(u => (
-                        <Text key={`use-${s.id}-${u.task}`} dimColor>
-                          ⏰ {u.task}
-                          {u.when ? ` · ${u.when}` : ''}
-                        </Text>
-                      ))}
-                    </Box>
-                  ) : null}
-                </Box>
-              )
-            })}
+        {synced.length > 0 && (
+          <Box flexDirection="column" gap="xs">
+            <Button
+              key="show-synced"
+              label={`${v.isShowingSynced ? '▾' : '▸'} from claude.ai ${synced.length}`}
+              dimColor
+              onPress={() => update($, view, was => ({ ...EMPTY, ...was, isShowingSynced: !was.isShowingSynced }))}
+            />
+            {v.isShowingSynced ? cardsOf(synced).map(drawCard) : null}
           </Box>
-        ))}
+        )}
 
-        {v.skills.length === 0 ? <Text dimColor>no skills found. the puppy naps.</Text> : null}
+        {mine.length === 0 ? <Text dimColor>no skills of your own yet. the puppy naps.</Text> : null}
         {v.notes.length > 0 ? <Text color="error">{v.notes.join(' · ')}</Text> : null}
       </Box>
     )

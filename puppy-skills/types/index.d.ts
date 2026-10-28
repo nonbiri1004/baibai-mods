@@ -1,6 +1,9 @@
 // where a skill can be used: personal ones everywhere, a repo's only in a conversation opened in
+// that repo, a plugin's wherever the plugin is turned on. synced: Anthropic's skills the app copies
+// from your claude.ai account into ~/.claude/skills/synced/ (usable everywhere, but not yours)
+//
 // that repo, a plugin's wherever the plugin is turned on
-export type Where = 'personal' | 'repo' | 'plugin'
+export type Where = 'personal' | 'repo' | 'plugin' | 'synced'
 
 // one scheduled task whose prompt names the skill
 export type Use = {
@@ -27,6 +30,8 @@ export type View = {
   skills: Skill[]
   // the ids unfolded to their whole description
   openIds: string[]
+  // the claude.ai skills are unfolded below the cards
+  isShowingSynced: boolean
   // ms since the epoch of the last look; null before the first
   at: number | null
   // what could not be read
