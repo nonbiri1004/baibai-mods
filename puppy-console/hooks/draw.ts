@@ -1,6 +1,6 @@
 // The picture under each card, as an SVG string: a progress bar for any pipeline, and a richer
 // picture for the details this mod knows (music, ai-video). Warm greys, light by day and dark by
-// night, low contrast; the only orange is the puppy's headphones.
+// night, low contrast. The puppy is the bare one (no headphones): a coding tool.
 import type { MusicDetail, Stage, Status, VideoDetail, VideoJob } from '../types'
 import { sit, sitBlink, sleep0, sleep1 } from './puppy'
 
