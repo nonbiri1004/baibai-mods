@@ -295,5 +295,7 @@ export function mascot(mood: Mood): string {
 // The pane's rows (e.props.scroll.bodyRows) the block puppy needs: its 13 rows take at most half.
 // Shorter, it is left out, never shrunk. puppy-todo and puppy-skills use the same number.
 export const PUPPY_MIN_ROWS = 26
+// The columns (e.props.bodyColumns) it needs: a narrower pane would wrap its rows apart.
+export const PUPPY_COLUMNS = 34
 const STILLS: Record<Mood, BlockRun[][]> = { typing: blockTyping0, sitting: blockSit, sleeping: blockSleep0 }
 export const stillBlocks = (mood: Mood): BlockRun[][] => STILLS[mood]

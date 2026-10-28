@@ -2,7 +2,7 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Conversation, Problem, Snapshot, Status } from '../types'
-import { cut, detailLines, MASCOT_SCALE, mascot, picture, PUPPY_MIN_ROWS, stillBlocks } from './draw'
+import { cut, detailLines, MASCOT_SCALE, mascot, picture, PUPPY_COLUMNS, PUPPY_MIN_ROWS, stillBlocks } from './draw'
 import type { Mood } from './draw'
 import { ago, alerts, expandHome, isFolded, isStale, parseStatus, sortCards, splitCards, textBar, titleOf, toggleFold } from './format'
 import { folderName, isWrapUp, KEEP_MS, nameOf, oneLine, parseConversation, plain, recent, SESSIONS, shownState, wrapOf } from './sessions'
@@ -365,11 +365,12 @@ export const register: Register = (on, options) => {
     return (
       <Box flexDirection="column" gap={1}>
         {/* no Svg here (the terminal): the puppy in block characters, on its own rows above, when they fit */}
-        {!hasSvg && e.props.scroll.bodyRows >= PUPPY_MIN_ROWS && (
+        {!hasSvg && e.props.scroll.bodyRows >= PUPPY_MIN_ROWS && e.props.bodyColumns >= PUPPY_COLUMNS && (
           <Box key="puppy" flexDirection="column">
             {stillBlocks(mood).map((runs, i) => (
+              // a blank row is one space: an empty Text takes no row, and the puppy must keep all 13
               <Text key={`puppy-${i}`}>
-                {runs.map(([text, fg, bg]) => <Text color={fg ?? undefined} backgroundColor={bg ?? undefined}>{text}</Text>)}
+                {runs.length ? runs.map(([text, fg, bg]) => <Text color={fg ?? undefined} backgroundColor={bg ?? undefined}>{text}</Text>) : ' '}
               </Text>
             ))}
           </Box>

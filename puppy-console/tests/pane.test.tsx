@@ -14,7 +14,10 @@ const PANE = {
   requestId: 'puppy-console',
   props: { title: 'console', isFocused: false, bodyColumns: 80, placement: 'dock', scroll: { offset: 0, bodyRows: 40 }, view: {} },
 } as const
-const rows = (bodyRows: number) => ({ ...PANE.props, scroll: { offset: 0, bodyRows } })
+// The text an element description shows, its nested Texts included.
+const textOf = (node: unknown): string =>
+  typeof node === 'string' ? node : ((node as { children?: unknown[] })?.children ?? []).map(textOf).join('')
+const rows = (bodyRows: number, bodyColumns = 80) => ({ ...PANE.props, bodyColumns, scroll: { offset: 0, bodyRows } })
 
 // The engine around the pane: a status folder /s holding `files` (changeable), the pane's
 // open/closed record, toasts, and a store in a Map the test can look into.
@@ -207,6 +210,17 @@ test('the terminal puppy shows only when the pane has 26 rows or more', { option
     expect(Boolean(await ui.find({ key: 'puppy' }))).toBe(isShown)
     // never a smaller puppy: all 13 rows, or none
     expect((await ui.find({ key: 'puppy' }))?.children ?? []).toHaveLength(isShown ? 13 : 0)
+  }
+  // every row has text, the blank ones a space: an empty Text takes no row on the terminal,
+  // so the puppy would be 9 to 12 rows tall and the cards below would jump with the mood
+  await ui.redraw(rows(40))
+  const rowTexts = ((await ui.find({ key: 'puppy' }))?.children ?? []).map(textOf)
+  expect(rowTexts).toHaveLength(13)
+  expect(rowTexts.filter(t => t.length === 0)).toHaveLength(0)
+  // too narrow for its 34 columns: left out, never wrapped
+  for (const [bodyColumns, isShown] of [[24, false], [33, false], [34, true]] as const) {
+    await ui.redraw(rows(40, bodyColumns))
+    expect(Boolean(await ui.find({ key: 'puppy' }))).toBe(isShown)
   }
   await ui.unmount()
 
