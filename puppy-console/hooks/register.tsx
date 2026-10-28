@@ -1,10 +1,10 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, Register } from 'claude-code'
+import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Conversation, Problem, Snapshot, Status } from '../types'
-import { detailLines, MASCOT_SCALE, mascot, picture, stillBlocks, W } from './draw'
+import { cut, detailLines, MASCOT_SCALE, mascot, picture, PUPPY_MIN_ROWS, stillBlocks } from './draw'
 import type { Mood } from './draw'
-import { ago, alerts, expandHome, isStale, parseStatus, sortCards, textBar, titleOf } from './format'
+import { ago, alerts, expandHome, isFolded, isStale, parseStatus, sortCards, splitCards, textBar, titleOf, toggleFold } from './format'
 import { folderName, isWrapUp, KEEP_MS, nameOf, oneLine, parseConversation, plain, recent, SESSIONS, shownState, wrapOf } from './sessions'
 
 const PANE = 'puppy-console'
@@ -13,6 +13,13 @@ const MAX_NEEDS = 6
 const MAX_OTHERS = 5
 
 const snapshot = atom({ plugin: 'puppy-console', key: 'snapshot' } as const, null)
+// What the person folded or opened, and whether the "older" group is open. The atoms redraw the
+// pane; $.store keeps them on this computer across conversations and restarts, one key per card
+// ("fold:<pipeline>") so two conversations folding different cards never undo each other.
+const folds = atom({ plugin: 'puppy-console', key: 'folds' } as const, {} as Record<string, boolean>)
+const isShowingOlder = atom({ plugin: 'puppy-console', key: 'isShowingOlder' } as const, false)
+const FOLD = 'fold:'
+const SHOWING_OLDER = 'isShowingOlder'
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
@@ -114,6 +121,61 @@ function refresh($: EngineInterface, setting: string, isNotifying: boolean, isSh
   return running
 }
 
+// The folds as the store has them, read when the pane opens, so a fold made in another
+// conversation shows here too. A store that can't be read keeps what this session has.
+async function loadFolds($: EngineInterface): Promise<void> {
+  try {
+    const kept: Record<string, boolean> = {}
+    for (const key of await $.store.keys()) {
+      if (!key.startsWith(FOLD)) continue
+      const v = await $.store.get(key)
+      if (typeof v === 'boolean') kept[key.slice(FOLD.length)] = v
+    }
+    const showing = (await $.store.get(SHOWING_OLDER)) === true
+    await update($, folds, () => kept)
+    await update($, isShowingOlder, () => showing)
+  } catch {
+    // nothing kept yet, or no store here: the defaults
+  }
+}
+
+async function pressFold($: EngineInterface, pipeline: string, isOlderCard: boolean): Promise<void> {
+  const next = await update($, folds, was => toggleFold(was, pipeline, isOlderCard))
+  const key = `${FOLD}${pipeline}`
+  await (pipeline in next ? $.store.set(key, next[pipeline]) : $.store.delete(key)).catch(() => {})
+}
+
+async function pressOlder($: EngineInterface): Promise<void> {
+  const next = await update($, isShowingOlder, was => !was)
+  await $.store.set(SHOWING_OLDER, next).catch(() => {})
+}
+
+async function isPaneUp($: EngineInterface): Promise<boolean> {
+  return (await $.ui.panes().catch(() => [])).some(p => p.id === PANE)
+}
+
+// The folder is read only while the pane is open: once when it opens, then every minute.
+// A module variable, not $.state: a timer is not data, and a reload drops both together.
+let reading: Timer | null = null
+function stopReading() {
+  reading?.cancel()
+  reading = null
+}
+
+// Like setInterval in a component's mount, cleared on unmount: each tick first asks whether the
+// pane is still up, and stops when it is not. Started over on every /console, so a second
+// /console never leaves two timers. Only the ticks tell news with a toast: the read on opening
+// is shown by the pane itself, and would compare against a read that may be hours old.
+function startReading($: EngineInterface, setting: string, isNotifying: boolean, isShowing: boolean) {
+  stopReading()
+  reading = $.clock.every(REFRESH_MS, () => {
+    void (async () => {
+      if (!(await isPaneUp($))) return stopReading()
+      await refresh($, setting, isNotifying, isShowing)
+    })()
+  })
+}
+
 // A detail of an unexpected shape loses its picture, not the whole pane.
 function safePicture(s: Status, stale: boolean) {
   try {
@@ -138,11 +200,22 @@ export const register: Register = (on, options) => {
 
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'console', description: 'Open the console: your conversations, then the pipelines' })
-    void refresh($, setting, isNotifying, isWriting)
-    // Like setInterval in a component's mount: each tick reads the folder again and the pane redraws.
-    $.clock.every(REFRESH_MS, () => refresh($, setting, isNotifying, isWriting))
-    return next(e)
+    const started = await next(e)
+    // the folder is read only on /console. a reload (or a new worker) with the pane still up reads again
+    if (await isPaneUp($)) {
+      await loadFolds($)
+      void refresh($, setting, false, isWriting)
+      startReading($, setting, isNotifying, isWriting)
+    }
+    return started
   })
+
+  // Closing the pane stops the reading at once (the next tick would see it gone anyway).
+  on('ui.close', { id: PANE }, async ($, e, next) => {
+    const closed = await next(e)
+    if (!(await isPaneUp($))) stopReading()
+    return closed
+  }).catch(($, e, next) => next(e))
 
   // The main loop only: a subagent's turns are part of this conversation's turn.
   // `wrap` is this turn's wrap_up, caught as it is called, so an older turn's is never used.
@@ -170,8 +243,11 @@ export const register: Register = (on, options) => {
   })
 
   on('command.run', { command: 'console' }, async $ => {
-    await refresh($, setting, isNotifying, isWriting)
+    await loadFolds($)
+    // read before opening, so the first draw has the cards
+    await refresh($, setting, false, isWriting)
     await $.ui.open({ id: PANE, title: 'console' })
+    startReading($, setting, isNotifying, isWriting)
     return { text: 'console opened.' }
   })
 
@@ -180,26 +256,56 @@ export const register: Register = (on, options) => {
     const { Box, Text, Button } = ui
     const snap = await read($, snapshot)
     const now = await $.clock.now()
+    const folded = await read($, folds)
+    const isShowingOlderCards = await read($, isShowingOlder)
     if (!snap) return <Text dimColor>loading…</Text>
 
     const hasSvg = e.surface !== 'terminal' && 'Svg' in ui
+    const { current, older } = splitCards(snap.cards, now)
     // the puppy types while a conversation is running, sits while one waits for you, else sleeps
     const shown = snap.conversations.map(c => shownState(c, now))
     const mood: Mood = shown.includes('running') ? 'typing' : shown.includes('waiting') || shown.includes('error') ? 'sitting' : 'sleeping'
 
-    const card = (s: Status) => {
+    // A card in the "older" group waits for nothing, so its state word has no color there.
+    const card = (s: Status, isOlderCard: boolean) => {
       const stale = isStale(s, now)
-      const pic = hasSvg ? safePicture(s, stale) : null
-      const stateColor = s.state === 'error' ? 'error' : s.state === 'waiting' ? 'warning' : s.state === 'running' ? 'success' : undefined
-      return (
-        <Box key={s.pipeline} flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap="xs">
-          <Box flexDirection="row" justifyContent="space-between">
-            <Text weight="semibold">{titleOf(s)}</Text>
-            <Text dimColor>
-              <Text color={stateColor}>{stale ? 'quiet' : s.state}</Text>
-              {' · '}{ago(now - Date.parse(s.updated))}{s.host ? ` · ${s.host}` : ''}
-            </Text>
+      const isCardFolded = isFolded(folded, s.pipeline, isOlderCard)
+      const word = stale ? 'quiet' : s.state
+      const stateColor = isOlderCard ? undefined
+        : word === 'error' ? 'error' : word === 'waiting' || word === 'quiet' ? 'warning' : word === 'running' ? 'success' : undefined
+      const since = ago(now - Date.parse(s.updated))
+      // folded, the line tells what waits for you instead of the computer, so it stays one line
+      const forYou = isCardFolded ? (s.waiting ?? []).length : 0
+      const after = isCardFolded ? ` · ${since}` : ` · ${since}${s.host ? ` · ${s.host}` : ''}`
+      const facts = `${word}${forYou > 0 ? ` · ${forYou} for you` : ''}${after}`
+      // the terminal clips the name by columns: the card's border and padding, the mark, the facts
+      const title = e.surface === 'terminal' ? cut(titleOf(s), Math.max(8, e.props.bodyColumns - 4 - 2 - facts.length - 1)) : titleOf(s)
+      // the card's name opens and folds it
+      const header = (
+        <Box flexDirection="row" justifyContent="space-between" gap={1}>
+          <Box flexShrink={1} minWidth={0}>
+            <Button key={`fold-${s.pipeline}`} plain onPress={() => pressFold($, s.pipeline, isOlderCard)}>
+              <Text dimColor>{isCardFolded ? '▸' : '▾'}</Text>{' '}<Text weight="semibold">{title}</Text>
+            </Button>
           </Box>
+          <Box flexShrink={0} flexDirection="row">
+            <Text dimColor><Text color={stateColor}>{word}</Text>{forYou > 0 ? ' · ' : ''}</Text>
+            {forYou > 0 && <Text>{forYou} for you</Text>}
+            <Text dimColor>{after}</Text>
+          </Box>
+        </Box>
+      )
+      if (isCardFolded) {
+        return (
+          <Box key={`card-${s.pipeline}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap="xs">
+            {header}
+          </Box>
+        )
+      }
+      const pic = hasSvg ? safePicture(s, stale) : null
+      return (
+        <Box key={`card-${s.pipeline}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap="xs">
+          {header}
           <Text>{s.headline}</Text>
           {stale && <Text color="warning">no update for {ago(now - Date.parse(s.updated)).replace(' ago', '')}; is {s.host ?? 'the computer'} asleep?</Text>}
           {pic && 'Svg' in ui
@@ -258,8 +364,8 @@ export const register: Register = (on, options) => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        {/* no Svg here (the terminal): the puppy in block characters, on its own rows above */}
-        {!hasSvg && (
+        {/* no Svg here (the terminal): the puppy in block characters, on its own rows above, when they fit */}
+        {!hasSvg && e.props.scroll.bodyRows >= PUPPY_MIN_ROWS && (
           <Box key="puppy" flexDirection="column">
             {stillBlocks(mood).map((runs, i) => (
               <Text key={`puppy-${i}`}>
@@ -275,7 +381,8 @@ export const register: Register = (on, options) => {
             )}
             <Text dimColor>checked {ago(now - snap.loadedAt)}</Text>
           </Box>
-          <Button key="refresh" label="refresh" hotkey="r" onPress={() => refresh($, setting, isNotifying, isWriting)} />
+          {/* no toast: what it finds shows right here */}
+          <Button key="refresh" label="refresh" hotkey="r" onPress={() => refresh($, setting, false, isWriting)} />
         </Box>
         {snap.conversations.length > 0 && conversationsCard(snap.conversations)}
         {snap.dirError && (
@@ -287,7 +394,19 @@ export const register: Register = (on, options) => {
         {!snap.dirError && snap.cards.length === 0 && snap.problems.length === 0 && (
           <Text dimColor>no status files in {snap.dir} yet</Text>
         )}
-        {snap.cards.map(card)}
+        {current.map(s => card(s, false))}
+        {/* cards with no update for three days and nothing for you, folded away at the bottom */}
+        {older.length > 0 && (
+          <Box key="older" flexDirection="column" gap="xs">
+            <Button
+              key="show-older"
+              label={`${isShowingOlderCards ? '▾' : '▸'} older ${older.length}`}
+              dimColor
+              onPress={() => pressOlder($)}
+            />
+            {isShowingOlderCards && older.map(s => card(s, true))}
+          </Box>
+        )}
         {snap.problems.map(p => (
           <Text key={`p:${p.file}`} dimColor>skipped {p.file}: {p.reason}</Text>
         ))}
