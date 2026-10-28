@@ -89,7 +89,7 @@ test('the conversations card comes first, with what each one asks', { options: {
     expect(texts.indexOf('conversations')).toBeLessThan(texts.indexOf('music'))
     // one waits for you: the puppy sits (a picture on the desktop, its face on the terminal)
     if (surface === 'desktop') expect((await ui.find({ type: 'Svg' }))?.props.alt).toBe('the puppy sitting at its laptop')
-    else expect(texts).toContain('•ᴥ•')
+    else expect(texts.some(t => /ᴥ/.test(t ?? ''))).toBe(false)
     expect(texts).toContain('→ Open a PR?')
     expect(texts).toContain('Card added.')
     expect(texts.some(t => /fix the bowl · done/.test(t ?? ''))).toBe(true)

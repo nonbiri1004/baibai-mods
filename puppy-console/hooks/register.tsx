@@ -11,8 +11,6 @@ const PANE = 'puppy-console'
 const REFRESH_MS = 60_000
 const MAX_NEEDS = 6
 const MAX_OTHERS = 5
-// the terminal has no pictures: the puppy's face instead
-const FACE: Record<Mood, string> = { typing: '•ᴥ•', sitting: '•ᴥ•', sleeping: '-ᴥ-' }
 
 const snapshot = atom({ plugin: 'puppy-console', key: 'snapshot' } as const, null)
 
@@ -262,9 +260,10 @@ export const register: Register = (on, options) => {
       <Box flexDirection="column" gap={1}>
         <Box flexDirection="row" justifyContent="space-between" alignItems="center">
           <Box flexDirection="row" alignItems="center" gap={1}>
-            {hasSvg && 'Svg' in ui
-              ? <ui.Svg source={mascot(mood)} alt={`the puppy ${mood} at its laptop`} width={34 * MASCOT_SCALE} height={26 * MASCOT_SCALE} />
-              : <Text>{FACE[mood]}</Text>}
+            {/* the terminal gets the puppy from baibai-brand's block output, once it has one */}
+            {hasSvg && 'Svg' in ui && (
+              <ui.Svg source={mascot(mood)} alt={`the puppy ${mood} at its laptop`} width={34 * MASCOT_SCALE} height={26 * MASCOT_SCALE} />
+            )}
             <Text dimColor>checked {ago(now - snap.loadedAt)}</Text>
           </Box>
           <Button key="refresh" label="refresh" hotkey="r" onPress={() => refresh($, setting, isNotifying, isWriting)} />
