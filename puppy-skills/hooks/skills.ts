@@ -1,7 +1,5 @@
 import type { Skill, Use, Where } from '../types'
 
-export const FACE = '•ᴥ•'
-
 // name and description from a SKILL.md's frontmatter; null when it has no name
 export function parseSkill(text: string): { name: string; description: string } | null {
   const m = /^---\r?\n([\s\S]*?)\r?\n---/.exec(text)

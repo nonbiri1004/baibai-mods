@@ -2,11 +2,12 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, FsEntry, Register } from 'claude-code'
 
 import type { Skill, View, Where } from '../types'
-import { typingPuppy } from './draw'
-import { FACE, bodyOf, cardsOf, cut, firstSentence, parseSkill, usesOf, whenOf } from './skills'
+import { stillBlocks, typingPuppy } from './draw'
+import { bodyOf, cardsOf, cut, firstSentence, parseSkill, usesOf, whenOf } from './skills'
 import type { Card, Task } from './skills'
 
 const PANE = 'puppy-skills'
+const PUPPY_MIN_ROWS = 26
 // how long a first sentence may run (Latin columns; a CJK character is two) where rows wrap
 const SENTENCE = 110
 
@@ -205,7 +206,7 @@ export const register: Register = on => {
     const { Box, Text, Button } = ui
     const v: View = { ...EMPTY, ...(await read($, view)) }
     if (v.at === null) {
-      return <Text dimColor>{FACE} sniffing around…</Text>
+      return <Text dimColor>loading…</Text>
     }
     const hasSvg = e.surface !== 'terminal' && 'Svg' in ui
     // the terminal: one line per skill, cut to the card (the pane less border and padding).
@@ -271,13 +272,20 @@ export const register: Register = on => {
 
     return (
       <Box flexDirection="column" gap={1}>
-        <Box flexDirection="row" justifyContent="space-between" gap={1}>
+        {!hasSvg && e.props.scroll.bodyRows >= PUPPY_MIN_ROWS && (
+          <Box key="puppy" flexDirection="column">
+            {stillBlocks().map((runs, i) => (
+              <Text key={`puppy-${i}`}>
+                {runs.map(([text, fg, bg]) => <Text color={fg ?? undefined} backgroundColor={bg ?? undefined}>{text}</Text>)}
+              </Text>
+            ))}
+          </Box>
+        )}
+        <Box flexDirection="row" justifyContent="space-between" alignItems="center" gap={1}>
           <Box flexDirection="row" alignItems="center" gap={1}>
             {hasSvg && 'Svg' in ui ? (
               <ui.Svg source={typingPuppy()} alt="the puppy typing at its laptop" width={68} height={52} isInteractive />
-            ) : (
-              <Text>{FACE}</Text>
-            )}
+            ) : null}
             <Text dimColor>
               {mine.length} skills · looked {clock(v.at)}
             </Text>

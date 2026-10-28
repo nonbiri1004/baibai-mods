@@ -1,5 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
+import { typing0 as blockFrame } from '../hooks/puppy-blocks'
+
 import type { View } from '../types'
 
 const PANE = {
@@ -41,13 +43,10 @@ test('the pane: a card per place, the first sentence, a clock on the scheduled o
     expect((await ui.find({ type: 'Text', text: /only in garden/ }))?.text).toBeTruthy()
     expect((await ui.find({ type: 'Text', text: /⏰ 9:00/ }))?.text).toBeTruthy()
     expect(await ui.find({ type: 'Text', text: /Never two/ })).toBeFalsy()
-    // the typing puppy where pictures draw, the face on the terminal
-    if (surface === 'terminal') {
-      expect((await ui.find({ type: 'Text', text: /•ᴥ•/ }))?.text).toBeTruthy()
-    } else {
-      const pic = await ui.find({ type: 'Svg' })
-      expect(pic).toBeTruthy()
+    if (surface !== 'terminal') {
+      expect((await ui.find({ type: 'Svg' }))?.props.alt).toBe('the puppy typing at its laptop')
     }
+    expect((await ui.findAll({ type: 'Text' })).map(t => t.text).join(' ')).not.toContain('ᴥ')
     await ui.unmount()
   }
 })
@@ -90,4 +89,42 @@ test('unfolded: the claude.ai card', async ($, on) => {
   expect(await ui.find({ type: 'Box', key: 'card-synced' })).toBeTruthy()
   expect((await ui.find({ type: 'Text', text: /no skills of your own yet/ }))?.text).toBeTruthy()
   await ui.unmount()
+})
+
+test('terminal: the full still puppy is above the header only when tall enough', async ($, on) => {
+  on('state.get', () => ({ value: { value: VIEW, version: 1 } }))
+  for (const bodyRows of [40, 26, 25, 20]) {
+    const ui = await $.ui.mount({
+      ...PANE, surface: 'terminal',
+      props: { ...PANE.props, scroll: { offset: 0, bodyRows } },
+    })
+    const texts = await ui.findAll({ type: 'Text' })
+    const puppy = await ui.find({ type: 'Box', key: 'puppy' })
+    if (bodyRows >= 26) {
+      expect(puppy?.children.length).toBe(13)
+      for (let i = 0; i < 13; i++) {
+        const row = puppy!.children[i]
+        expect(row.type).toBe('Text')
+        expect((row.children ?? []).map(run => run.children.join('')).join('')).toBe(blockFrame[i].map(([text]) => text).join(''))
+        expect((row.children ?? []).map(run => [run.children.join(''), run.props?.color ?? null, run.props?.backgroundColor ?? null])).toEqual(blockFrame[i])
+      }
+      expect(texts[0].text).toBe(blockFrame[0].map(([text]) => text).join(''))
+      expect(texts.findIndex(t => t.text.includes('2 skills'))).toBeGreaterThan(12)
+    } else {
+      expect(puppy).toBeFalsy()
+      expect(texts[0].text).toContain('2 skills')
+    }
+    expect(await ui.find({ type: 'Svg' })).toBeFalsy()
+    expect(texts.map(t => t.text).join(' ')).not.toContain('ᴥ')
+    await ui.unmount()
+  }
+})
+
+test('loading is plain text on every surface', async ($, on) => {
+  on('state.get', () => ({ value: { value: { ...VIEW, at: null }, version: 1 } }))
+  for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect((await ui.findAll({ type: 'Text' })).map(t => t.text)).toEqual(['loading…'])
+    await ui.unmount()
+  }
 })

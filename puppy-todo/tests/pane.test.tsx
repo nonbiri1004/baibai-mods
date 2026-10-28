@@ -1,5 +1,7 @@
 import { expect, test } from 'claude-code/testing'
 
+import { sleep0, sit as blockFrame } from '../hooks/puppy-blocks'
+
 import type { Item, View } from '../types'
 
 const PANE = {
@@ -52,6 +54,10 @@ test('the pane: one list with a tick and ✕ on each row, the add field, done fo
     expect((await ui.find({ type: 'Button', key: 'show-done' }))?.text).toContain('done 1')
     // nothing from other conversations, no tidy up, no questions
     const words = (await ui.findAll({ type: 'Text' })).map(t => t.text).join(' ')
+    expect(words).not.toContain('ᴥ')
+    if (surface === 'desktop') {
+      expect((await ui.find({ type: 'Svg' }))?.props.alt).toBe('the puppy sitting at its laptop')
+    }
     expect(/asked you|tidy up|waiting for merge|this conversation/.test(words)).toBe(false)
     await ui.unmount()
   }
@@ -84,4 +90,60 @@ test('a view kept from an older version still draws', async ($, on) => {
   const ui = await $.ui.mount({ ...PANE, surface: 'desktop' })
   expect(await ui.find({ type: 'Button', key: 'tick-vet' })).toBeTruthy()
   await ui.unmount()
+})
+
+test('terminal: the full still puppy is above the header only when tall enough', async ($, on) => {
+  on('state.get', () => ({ value: { value: VIEW, version: 1 } }))
+  for (const bodyRows of [40, 26, 25, 20]) {
+    const ui = await $.ui.mount({
+      ...PANE, surface: 'terminal',
+      props: { ...PANE.props, scroll: { offset: 0, bodyRows } },
+    })
+    const texts = await ui.findAll({ type: 'Text' })
+    const puppy = await ui.find({ type: 'Box', key: 'puppy' })
+    if (bodyRows >= 26) {
+      expect(puppy?.children.length).toBe(13)
+      for (let i = 0; i < 13; i++) {
+        const row = puppy!.children[i]
+        expect(row.type).toBe('Text')
+        expect((row.children ?? []).map(run => run.children.join('')).join('')).toBe(blockFrame[i].map(([text]) => text).join(''))
+        expect((row.children ?? []).map(run => [run.children.join(''), run.props?.color ?? null, run.props?.backgroundColor ?? null])).toEqual(blockFrame[i])
+      }
+      expect(texts[0].text).toBe(blockFrame[0].map(([text]) => text).join(''))
+      expect(texts.findIndex(t => t.text.includes('2 to-do'))).toBeGreaterThan(12)
+    } else {
+      expect(puppy).toBeFalsy()
+      expect(texts[0].text).toContain('2 to-do')
+    }
+    expect(await ui.find({ type: 'Svg' })).toBeFalsy()
+    expect(texts.map(t => t.text).join(' ')).not.toContain('ᴥ')
+    await ui.unmount()
+  }
+})
+
+test('loading is plain text on every surface', async ($, on) => {
+  on('state.get', () => ({ value: { value: { ...VIEW, at: null }, version: 1 } }))
+  for (const surface of ['terminal', 'desktop', 'mobile'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    expect((await ui.findAll({ type: 'Text' })).map(t => t.text)).toEqual(['loading…'])
+    await ui.unmount()
+  }
+})
+
+test('nothing open: desktop sleeps and terminal uses the sleeping still', async ($, on) => {
+  on('state.get', () => ({ value: { value: { ...VIEW, items: VIEW.items.filter(i => i.status === 'done') }, version: 1 } }))
+  for (const surface of ['desktop', 'terminal'] as const) {
+    const ui = await $.ui.mount({ ...PANE, surface })
+    if (surface === 'desktop') {
+      expect((await ui.find({ type: 'Svg' }))?.props.alt).toBe('the puppy sleeping at its laptop')
+    } else {
+      const puppy = await ui.find({ type: 'Box', key: 'puppy' })
+      expect(puppy?.children.length).toBe(13)
+      for (let i = 0; i < 13; i++) {
+        expect((puppy!.children[i].children ?? []).map(run => run.children.join('')).join('')).toBe(sleep0[i].map(([text]) => text).join(''))
+      }
+    }
+    expect((await ui.findAll({ type: 'Text' })).map(t => t.text).join(' ')).not.toContain('ᴥ')
+    await ui.unmount()
+  }
 })
