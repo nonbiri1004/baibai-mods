@@ -2,15 +2,17 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register, Timer } from 'claude-code'
 
 import type { Conversation, Problem, Snapshot, Status } from '../types'
-import { cut, detailLines, MASCOT_SCALE, mascot, picture, PUPPY_COLUMNS, PUPPY_MIN_ROWS, stillBlocks } from './draw'
+import { cut, detailLines, MASCOT_SCALE, mascot, picture, PUPPY_COLUMNS, PUPPY_MIN_ROWS, stillBlocks, unknownStages } from './draw'
 import type { Mood } from './draw'
-import { ago, alerts, expandHome, isFolded, isStale, parseStatus, sortCards, splitCards, textBar, titleOf, toggleFold } from './format'
-import { folderName, isWrapUp, KEEP_MS, nameOf, oneLine, parseConversation, plain, recent, SESSIONS, shownState, wrapOf } from './sessions'
+import { ago, alerts, expandHome, isFolded, isStale, markOf, parseStatus, quietWhy, sortCards, splitCards, textBar, titleOf, toggleFold } from './format'
+import { folderName, isWrapUp, KEEP_MS, KEEP_WAITING_MS, nameOf, oneLine, parseConversation, plain, plainLine, recent, SESSIONS, shownState, wrapOf } from './sessions'
 
 const PANE = 'puppy-console'
 const REFRESH_MS = 60_000
 const MAX_NEEDS = 6
 const MAX_OTHERS = 5
+// The terminal pane asks for this many rows: the 13-row puppy and the first cards fit.
+const PANE_ROWS = 40
 
 const snapshot = atom({ plugin: 'puppy-console', key: 'snapshot' } as const, null)
 // What the person folded or opened, and whether the "older" group is open. The atoms redraw the
@@ -18,14 +20,19 @@ const snapshot = atom({ plugin: 'puppy-console', key: 'snapshot' } as const, nul
 // ("fold:<pipeline>") so two conversations folding different cards never undo each other.
 const folds = atom({ plugin: 'puppy-console', key: 'folds' } as const, {} as Record<string, boolean>)
 const isShowingOlder = atom({ plugin: 'puppy-console', key: 'isShowingOlder' } as const, false)
+const isShowingDone = atom({ plugin: 'puppy-console', key: 'isShowingDone' } as const, false)
+const writeError = atom({ plugin: 'puppy-console', key: 'writeError' } as const, null as string | null)
 const FOLD = 'fold:'
 const SHOWING_OLDER = 'isShowingOlder'
+const SHOWING_DONE = 'isShowingDone'
 
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err))
 
 // Every *.json in the folder is one card. A file that does not parse becomes a problem line,
 // never a missing card without a word: the writer may be halfway through, or on an old format.
-export async function loadFolder($: EngineInterface, dir: string): Promise<Omit<Snapshot, 'conversations'>> {
+// A file that fails once (caught mid-write, or a sync's half copy) keeps its last good card, so
+// the card does not blink out and its notice is not told again when it comes back.
+export async function loadFolder($: EngineInterface, dir: string, prev: Status[] = []): Promise<Omit<Snapshot, 'conversations' | 'conversationsError'>> {
   const loadedAt = await $.clock.now()
   if (!dir) return { dir, cards: [], problems: [], dirError: 'no status folder set', loadedAt }
   let entries
@@ -44,28 +51,51 @@ export async function loadFolder($: EngineInterface, dir: string): Promise<Omit<
       cards.push(s)
     } catch (err) {
       problems.push({ file: f.name, reason: errorText(err) })
+      const kept = prev.find(s => `${s.pipeline}.json` === f.name)
+      if (kept) cards.push(kept)
     }
   }
   return { dir, cards: sortCards(cards), problems, dirError: null, loadedAt }
 }
 
-// The conversations' files. A file older than the card shows is not read at all, so the folder
-// can grow without the refresh slowing down. One that does not parse (a write caught halfway)
-// keeps what the last read had, and is read again at the next refresh.
-async function loadConversations($: EngineInterface, dir: string, prev: Conversation[], now: number): Promise<Conversation[]> {
+// The conversations' files. A file older than the card can show is not read at all, and one
+// whose time has not changed since the last read is not read again, so the folder can grow
+// without the refresh slowing down. One that does not parse (a write caught halfway) keeps what
+// the last read had. A missing folder is "none yet"; any other failure is said in the pane.
+const readCache = new Map<string, { mtimeMs: number; conversation: Conversation }>()
+type Loaded = { conversations: Conversation[]; error: string | null; problems: Problem[] }
+async function loadConversations($: EngineInterface, dir: string, now: number): Promise<Loaded> {
+  let entries
+  try {
+    entries = await $.fs.list(dir)
+  } catch (err) {
+    const why = errorText(err)
+    return { conversations: [], error: /ENOENT|no such|not found|missing/i.test(why) ? null : why, problems: [] }
+  }
   const out: Conversation[] = []
-  for (const f of await $.fs.list(dir).catch(() => [])) {
+  const problems: Problem[] = []
+  for (const f of entries) {
     if (f.kind !== 'file' || !f.name.endsWith('.json') || f.name.startsWith('.')) continue
-    if (f.mtimeMs && now - f.mtimeMs > KEEP_MS) continue
+    if (f.mtimeMs && now - f.mtimeMs > KEEP_WAITING_MS) continue
+    const cached = readCache.get(f.name)
+    if (cached && f.mtimeMs && cached.mtimeMs === f.mtimeMs) {
+      out.push(cached.conversation)
+      continue
+    }
     try {
       const c = parseConversation(await $.fs.read(`${dir}/${f.name}`))
-      if (`${c.id}.json` === f.name) out.push(c)
-    } catch {
-      const kept = prev.find(c => `${c.id}.json` === f.name)
-      if (kept) out.push(kept)
+      if (`${c.id}.json` !== f.name) {
+        problems.push({ file: `sessions/${f.name}`, reason: `its "id" is ${c.id}` })
+        continue
+      }
+      readCache.set(f.name, { mtimeMs: f.mtimeMs ?? 0, conversation: c })
+      out.push(c)
+    } catch (err) {
+      problems.push({ file: `sessions/${f.name}`, reason: cached ? `${errorText(err)}; showing the last read` : errorText(err) })
+      if (cached) out.push(cached.conversation)
     }
   }
-  return recent(out, now)
+  return { conversations: recent(out, now), error: null, problems }
 }
 
 // This conversation's own file, `~/.claude/console/sessions/<session id>.json`; only this
@@ -74,20 +104,24 @@ async function loadConversations($: EngineInterface, dir: string, prev: Conversa
 // Writes go one after another and never hold up the turn: a turn's hooks queue them and go on.
 let own: Conversation | null = null
 let writing: Promise<void> = Promise.resolve()
-function save($: EngineInterface, change: (c: Conversation) => Conversation, prompt = '') {
+// What the classic hooks told about each session: the app's own title (its sidebar's, which the
+// app writes after the first prompt and may change) and whether it began as a fork.
+const appTitles = new Map<string, string>()
+const forks = new Set<string>()
+function save($: EngineInterface, change: (c: Conversation) => Conversation, prompt = ''): Promise<void> {
   // The id is asked for now, not when the write's turn comes: a /clear in between must not
   // send this turn's recap into the next conversation's file.
   const asked = $.session.id()
   writing = writing.then(async () => {
     const [id, home, now] = await Promise.all([asked, $.env.get('HOME'), $.clock.now()])
-    if (!home) return
+    if (!home) throw new Error('HOME is not set')
     const path = `${home}/${SESSIONS}/${id}.json`
     if (own?.id !== id) {
       own = await $.fs.read(path).then(parseConversation).catch(() => null)
       if (!own) {
         // the repository's name (a worktree's main checkout), not the folder: no "console-sessions"
         // for a worktree, no home folder's name for a conversation outside any repository
-        const [messages, repo] = await Promise.all([$.session.messages(), $.session.repo().catch(() => null)])
+        const [messages, repo] = await Promise.all([$.session.messages().catch(() => []), $.session.repo().catch(() => null)])
         const title = nameOf(messages)
         own = {
           format: 'session-status', version: 1, id, updated: '', state: 'running',
@@ -96,9 +130,33 @@ function save($: EngineInterface, change: (c: Conversation) => Conversation, pro
         }
       }
     }
-    own = change({ ...own, updated: new Date(now).toISOString() })
+    const appTitle = appTitles.get(id)
+    own = change({
+      ...own,
+      updated: new Date(now).toISOString(),
+      ...(appTitle ? { title: oneLine(appTitle, 80), isAppTitle: true as const } : {}),
+      ...(forks.has(id) ? { isFork: true as const } : {}),
+    })
     await $.fs.write(path, `${JSON.stringify(own, null, 2)}\n`)
-  }).catch(() => {})
+    await update($, writeError, () => null)
+  }).catch(async err => {
+    // said in this conversation's pane, if it has one open; the write is tried again next turn
+    await update($, writeError, () => errorText(err)).catch(() => {})
+  })
+  return writing
+}
+
+// A push to the person's phone or desktop when this conversation stops to ask them something,
+// through the app's own PushNotification tool. Only when the permission check already allows it:
+// a hook never opens a permission dialog. Nothing is said when it is not sent.
+async function push($: EngineInterface, text: string): Promise<void> {
+  try {
+    const input = { message: text, status: 'proactive' as const }
+    const { decision } = await $.tool.check({ tool: 'PushNotification', input })
+    if (decision === 'allow') await $.tool.call({ tool: 'PushNotification', ...input })
+  } catch {
+    // no such tool here (the terminal, an older app), or it failed: the card still shows it
+  }
 }
 
 // One refresh at a time: the timer and the button share the running one,
@@ -109,15 +167,23 @@ function refresh($: EngineInterface, setting: string, isNotifying: boolean, isSh
     const home = await $.env.get('HOME')
     const dir = expandHome(setting.trim(), home)
     const prev = await read($, snapshot)
-    const folder = await loadFolder($, dir)
-    const conversations = isShowing && home
-      ? await loadConversations($, `${home}/${SESSIONS}`, prev?.conversations ?? [], folder.loadedAt)
-      : []
-    const next: Snapshot = { ...folder, conversations }
+    const folder = await loadFolder($, dir, prev?.cards ?? [])
+    const loaded = isShowing && home
+      ? await loadConversations($, `${home}/${SESSIONS}`, folder.loadedAt)
+      : { conversations: [], error: null, problems: [] }
+    const next: Snapshot = {
+      ...folder,
+      problems: [...folder.problems, ...loaded.problems],
+      conversations: loaded.conversations,
+      conversationsError: loaded.error,
+    }
     await update($, snapshot, () => next)
     // A toast shows in this conversation only, for ten seconds; each open conversation tells its own.
     if (isNotifying) for (const line of alerts(prev, next)) $.ui.toast(line, { timeoutMs: 10_000 })
-  })().finally(() => { running = null })
+  })()
+    // an engine call that failed mid-read: the pane keeps the last read, and the next tick tries again
+    .catch(() => {})
+    .finally(() => { running = null })
   return running
 }
 
@@ -132,8 +198,10 @@ async function loadFolds($: EngineInterface): Promise<void> {
       if (typeof v === 'boolean') kept[key.slice(FOLD.length)] = v
     }
     const showing = (await $.store.get(SHOWING_OLDER)) === true
+    const showingDone = (await $.store.get(SHOWING_DONE)) === true
     await update($, folds, () => kept)
     await update($, isShowingOlder, () => showing)
+    await update($, isShowingDone, () => showingDone)
   } catch {
     // nothing kept yet, or no store here: the defaults
   }
@@ -150,8 +218,18 @@ async function pressOlder($: EngineInterface): Promise<void> {
   await $.store.set(SHOWING_OLDER, next).catch(() => {})
 }
 
+async function pressDone($: EngineInterface): Promise<void> {
+  const next = await update($, isShowingDone, was => !was)
+  await $.store.set(SHOWING_DONE, next).catch(() => {})
+}
+
+// A failed question is not a closed pane: the reading goes on, and ui.close stops it.
 async function isPaneUp($: EngineInterface): Promise<boolean> {
-  return (await $.ui.panes().catch(() => [])).some(p => p.id === PANE)
+  try {
+    return (await $.ui.panes()).some(p => p.id === PANE)
+  } catch {
+    return true
+  }
 }
 
 // The folder is read only while the pane is open: once when it opens, then every minute.
@@ -172,7 +250,7 @@ function startReading($: EngineInterface, setting: string, isNotifying: boolean,
     void (async () => {
       if (!(await isPaneUp($))) return stopReading()
       await refresh($, setting, isNotifying, isShowing)
-    })()
+    })().catch(() => {})
   })
 }
 
@@ -197,6 +275,7 @@ export const register: Register = (on, options) => {
   const setting = String(options.status_dir ?? '')
   const isNotifying = options.notify !== 'off'
   const isWriting = options.conversations !== 'off'
+  const isPushing = isWriting && options.push !== 'off'
 
   on('session.start', async ($, e, next) => {
     await $.command.register({ name: 'console', description: 'Open the console: your conversations, then the pipelines' })
@@ -216,6 +295,22 @@ export const register: Register = (on, options) => {
     if (!(await isPaneUp($))) stopReading()
     return closed
   }).catch(($, e, next) => next(e))
+
+  // The app's own title and how the session began, from the classic hooks: SessionStart (a fork
+  // of another conversation, a /clear, a resume) and UserPromptSubmit (each prompt, with the
+  // title as it stands). Kept by session id and written with the next turn's save.
+  on('classic.SessionStart', async ($, e, next) => {
+    if (isWriting) {
+      if (e.source === 'fork') forks.add(e.session_id)
+      if (e.session_title) appTitles.set(e.session_id, e.session_title)
+    }
+    return next(e)
+  })
+
+  on('classic.UserPromptSubmit', async ($, e, next) => {
+    if (isWriting && e.session_title) appTitles.set(e.session_id, e.session_title)
+    return next(e)
+  })
 
   // The main loop only: a subagent's turns are part of this conversation's turn.
   // `wrap` is this turn's wrap_up, caught as it is called, so an older turn's is never used.
@@ -237,7 +332,36 @@ export const register: Register = (on, options) => {
     if (isWriting && e.agentId === undefined) {
       const w = wrap
       const state = e.reason === 'error' || e.reason === 'refusal' ? 'error' : w?.ask ? 'waiting' : 'done'
-      save($, c => ({ ...c, state, recap: w?.recap || oneLine(e.answer, 200) || c.recap, ask: w?.ask ?? null }))
+      // a turn with no wrap_up of its own keeps the last wrap_up's recap (a short reply says less);
+      // a conversation that never had one (the terminal) shows the answer's first line instead
+      let told: Conversation | null = null
+      void save($, c => (told = {
+        ...c,
+        state,
+        recap: w?.recap || (c.isWrapRecap ? c.recap : plainLine(e.answer, 200) || c.recap),
+        ...(w?.recap || c.isWrapRecap ? { isWrapRecap: true as const } : {}),
+        ask: w?.ask ?? null,
+      }))
+        .then(() => {
+          const c = told as Conversation | null
+          if (isPushing && c && state === 'waiting' && !c.isFork) void push($, cut(`${c.title} · ${c.ask}`, 190))
+        })
+    }
+    return next(e)
+  })
+
+  // The session ends: a turn left running is done, so the card never waits on a guess. A /clear
+  // ends this conversation for good, so its question goes too; an exit keeps it (you may come back).
+  on('session.end', async ($, e, next) => {
+    if (isWriting) {
+      const isCleared = e.reason === 'clear'
+      // the engine's short end budget bounds this wait; a write still queued past it is lost,
+      // and the 6-hour fallback (RUNNING_MS) covers that
+      await save($, c => ({
+        ...c,
+        state: c.state === 'running' || (isCleared && c.state === 'waiting') ? 'done' : c.state,
+        ask: isCleared ? null : c.ask,
+      }))
     }
     return next(e)
   })
@@ -246,7 +370,7 @@ export const register: Register = (on, options) => {
     await loadFolds($)
     // read before opening, so the first draw has the cards
     await refresh($, setting, false, isWriting)
-    await $.ui.open({ id: PANE, title: 'console' })
+    await $.ui.open({ id: PANE, title: 'console', rows: PANE_ROWS })
     startReading($, setting, isNotifying, isWriting)
     return { text: 'console opened.' }
   })
@@ -258,7 +382,12 @@ export const register: Register = (on, options) => {
     const now = await $.clock.now()
     const folded = await read($, folds)
     const isShowingOlderCards = await read($, isShowingOlder)
+    const isShowingDoneList = await read($, isShowingDone)
+    const ownWriteError = await read($, writeError)
     if (!snap) return <Text dimColor>loading…</Text>
+    const isTerminal = e.surface === 'terminal'
+    // a card's body has 4 fewer columns than the pane: its border and padding
+    const cardColumns = Math.max(8, e.props.bodyColumns - 4)
 
     const hasSvg = e.surface !== 'terminal' && 'Svg' in ui
     const { current, older } = splitCards(snap.cards, now)
@@ -268,9 +397,9 @@ export const register: Register = (on, options) => {
 
     // A card in the "older" group waits for nothing, so its state word has no color there.
     const card = (s: Status, isOlderCard: boolean) => {
-      const stale = isStale(s, now)
+      const stale = isStale(s, now) && s.state !== 'error'
       const isCardFolded = isFolded(folded, s.pipeline, isOlderCard)
-      const word = stale ? 'quiet' : s.state
+      const word = markOf(s, now)
       const stateColor = isOlderCard ? undefined
         : word === 'error' ? 'error' : word === 'waiting' || word === 'quiet' ? 'warning' : word === 'running' ? 'success' : undefined
       const since = ago(now - Date.parse(s.updated))
@@ -279,7 +408,7 @@ export const register: Register = (on, options) => {
       const after = isCardFolded ? ` · ${since}` : ` · ${since}${s.host ? ` · ${s.host}` : ''}`
       const facts = `${word}${forYou > 0 ? ` · ${forYou} for you` : ''}${after}`
       // the terminal clips the name by columns: the card's border and padding, the mark, the facts
-      const title = e.surface === 'terminal' ? cut(titleOf(s), Math.max(8, e.props.bodyColumns - 4 - 2 - facts.length - 1)) : titleOf(s)
+      const title = isTerminal ? cut(titleOf(s), Math.max(8, cardColumns - 2 - facts.length - 1)) : titleOf(s)
       // the card's name opens and folds it
       const header = (
         <Box flexDirection="row" justifyContent="space-between" gap={1}>
@@ -307,16 +436,20 @@ export const register: Register = (on, options) => {
         <Box key={`card-${s.pipeline}`} flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap="xs">
           {header}
           <Text>{s.headline}</Text>
-          {stale && <Text color="warning">no update for {ago(now - Date.parse(s.updated)).replace(' ago', '')}; is {s.host ?? 'the computer'} asleep?</Text>}
+          {stale && <Text><Text color="warning">quiet</Text><Text dimColor> · {quietWhy(s, now)}</Text></Text>}
           {pic && 'Svg' in ui
             ? <ui.Svg source={pic.source} alt={pic.alt} isInteractive />
             : s.progress && <Text mono dimColor>{textBar(s.progress)}</Text>}
           {/* no picture (the terminal): the same details as text */}
           {!pic && safeLines(s).map(line => <Text dimColor>{line}</Text>)}
+          {/* jobs at a stage the picture has no column for, named so none goes missing */}
+          {unknownStages(s).map(line => <Text key={`other-${line}`} dimColor>other stage · {line}</Text>)}
           {(s.waiting ?? []).length > 0 && (
             <Box flexDirection="column">
               <Text color="warning">waiting for you</Text>
-              {(s.waiting ?? []).slice(0, 5).map(w => <Text key={w.id}>· {w.text}</Text>)}
+              {(s.waiting ?? []).slice(0, 5).map(w => (
+                <Text key={w.id}>· {w.text}{w.since && !Number.isNaN(Date.parse(w.since)) ? <Text dimColor> · {ago(now - Date.parse(w.since)).replace(' ago', '')}</Text> : null}</Text>
+              ))}
               {(s.waiting ?? []).length > 5 && <Text dimColor>· and {(s.waiting ?? []).length - 5} more</Text>}
             </Box>
           )}
@@ -328,36 +461,62 @@ export const register: Register = (on, options) => {
       )
     }
 
-    // Always first: the conversations that wait for you, each with where it stands and what it asks.
-    // The rest get one quiet line each.
+    // Always first: the conversations that wait for you, each with its name, where it stands and
+    // what it asks. Running ones get one quiet line each; done ones fold behind "▸ done N".
     const conversationsCard = (list: Conversation[]) => {
       const needs = list.filter(c => ['waiting', 'error'].includes(shownState(c, now)))
-      const others = list.filter(c => !needs.includes(c))
-      const running = others.filter(c => shownState(c, now) === 'running').length
+      const runningList = list.filter(c => shownState(c, now) === 'running')
+      const doneList = list.filter(c => shownState(c, now) === 'done')
       const since = (c: Conversation) => `${c.project ? `${c.project} · ` : ''}${ago(now - Date.parse(c.updated))}`
+      // One row: the name gives way, the facts on the right never wrap (STYLE.md, long text).
+      const row = (c: Conversation, facts: string, isDim: boolean) => {
+        const name = isTerminal ? cut(c.title, Math.max(8, cardColumns - facts.length - 3)) : c.title
+        return (
+          <Box key={`c:${c.id}`} flexDirection="row" gap={1}>
+            <Box flexShrink={1} minWidth={0}>
+              <Text dimColor={isDim} wrap="truncate-end">{isDim ? '· ' : ''}{name}</Text>
+            </Box>
+            <Box flexShrink={0}>
+              <Text dimColor>{facts}</Text>
+            </Box>
+          </Box>
+        )
+      }
+      const line = (text: string) => (isTerminal ? cut(text, cardColumns) : text)
       return (
         <Box key="conversations" flexDirection="column" borderStyle="round" borderDimColor paddingX={1} gap="xs">
           <Box flexDirection="row" justifyContent="space-between">
             <Text weight="semibold">conversations</Text>
             <Text dimColor>
               {needs.length > 0 ? <Text color="warning">{needs.length} waiting</Text> : 'none waiting'}
-              {running > 0 ? ` · ${running} running` : ''}
+              {runningList.length > 0 ? ` · ${runningList.length} running` : ''}
             </Text>
           </Box>
-          {needs.slice(0, MAX_NEEDS).map(c => (
-            <Box key={`c:${c.id}`} flexDirection="column">
-              <Text>{c.title} <Text dimColor>· {since(c)}</Text></Text>
-              {c.recap && <Text dimColor>{c.recap}</Text>}
-              {c.state === 'error'
-                ? <Text color="error">the last turn ended on an error</Text>
-                : c.ask && <Text color="warning">→ {c.ask}</Text>}
+          {list.length === 0 && <Text dimColor>no conversations yet: each one shows here after its first turn</Text>}
+          {/* the terminal has no "xs" gap, so a blank row keeps one conversation from running into the next */}
+          {needs.length > 0 && (
+            <Box key="needs" flexDirection="column" gap={isTerminal ? 1 : 'xs'}>
+              {needs.slice(0, MAX_NEEDS).map(c => (
+                <Box key={`need:${c.id}`} flexDirection="column">
+                  {row(c, since(c), false)}
+                  {c.recap && <Text dimColor wrap="truncate-end">{line(c.recap)}</Text>}
+                  {c.state === 'error'
+                    ? <Text><Text color="error">error</Text><Text dimColor> · the last turn ended on an error</Text></Text>
+                    : c.ask && <Text><Text color="warning">→</Text> {c.ask}</Text>}
+                </Box>
+              ))}
             </Box>
-          ))}
+          )}
           {needs.length > MAX_NEEDS && <Text dimColor>and {needs.length - MAX_NEEDS} more waiting</Text>}
-          {others.slice(0, MAX_OTHERS).map(c => (
-            <Text key={`c:${c.id}`} dimColor>· {c.title} · {shownState(c, now)} · {since(c)}</Text>
-          ))}
-          {others.length > MAX_OTHERS && <Text dimColor>· and {others.length - MAX_OTHERS} more in the last 3 days</Text>}
+          {runningList.slice(0, MAX_OTHERS).map(c => row(c, `running · ${since(c)}`, true))}
+          {runningList.length > MAX_OTHERS && <Text dimColor>· and {runningList.length - MAX_OTHERS} more running</Text>}
+          {doneList.length > 0 && (
+            <Box key="done" flexDirection="column" gap="xs">
+              <Button key="show-done" label={`${isShowingDoneList ? '▾' : '▸'} done ${doneList.length}`} dimColor onPress={() => pressDone($)} />
+              {isShowingDoneList && doneList.slice(0, MAX_OTHERS * 2).map(c => row(c, since(c), true))}
+              {isShowingDoneList && doneList.length > MAX_OTHERS * 2 && <Text dimColor>· and {doneList.length - MAX_OTHERS * 2} more</Text>}
+            </Box>
+          )}
         </Box>
       )
     }
@@ -378,14 +537,16 @@ export const register: Register = (on, options) => {
         <Box flexDirection="row" justifyContent="space-between" alignItems="center">
           <Box flexDirection="row" alignItems="center" gap={1}>
             {hasSvg && 'Svg' in ui && (
-              <ui.Svg source={mascot(mood)} alt={`the puppy ${mood} at its laptop`} width={34 * MASCOT_SCALE} height={26 * MASCOT_SCALE} />
+              <ui.Svg source={mascot(mood)} alt={`the puppy ${mood === 'typing' ? 'typing at its laptop' : mood}`} width={34 * MASCOT_SCALE} height={26 * MASCOT_SCALE} isInteractive />
             )}
             <Text dimColor>checked {ago(now - snap.loadedAt)}</Text>
           </Box>
           {/* no toast: what it finds shows right here */}
           <Button key="refresh" label="refresh" hotkey="r" onPress={() => refresh($, setting, false, isWriting)} />
         </Box>
-        {snap.conversations.length > 0 && conversationsCard(snap.conversations)}
+        {isWriting && conversationsCard(snap.conversations)}
+        {isWriting && snap.conversationsError && <Text color="error">can't read the conversations folder: {snap.conversationsError}</Text>}
+        {isWriting && ownWriteError && <Text dimColor>this conversation could not write its file: {ownWriteError}</Text>}
         {snap.dirError && (
           <Box flexDirection="column">
             <Text color="error">can't read the status folder: {snap.dirError}</Text>

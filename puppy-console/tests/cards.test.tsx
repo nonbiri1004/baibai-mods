@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { byStage, collectorCounts, cut, detailLines, MAX_SQUARES, picture } from '../hooks/draw'
-import { alerts, expandHome, isFolded, isOlder, isStale, OLDER_MS, parseStatus, sortCards, splitCards, textBar, toggleFold } from '../hooks/format'
+import { byStage, collectorCounts, cut, detailLines, MAX_SQUARES, picture, unknownStages } from '../hooks/draw'
+import { ago, alerts, expandHome, isFolded, isOlder, isStale, markOf, OLDER_MS, parseStatus, sortCards, splitCards, textBar, toggleFold } from '../hooks/format'
 import type { Snapshot, Status } from '../types'
 
 const base = {
@@ -41,7 +41,11 @@ test('a huge batch keeps its squares a size and the svg small', () => {
 })
 
 test('labels are cut by width; a CJK character counts as two', () => {
-  expect(cut('demo_本機測試', 12)).toBe('demo_本機…')
+  expect(cut('demo_本機測試', 12)).toBe('demo_本機測…')
+  // an emoji is one code point: never split into half a surrogate pair
+  expect(cut('ab😀cd', 4)).toBe('ab😀…')
+  expect(cut('ab😀cd', 3)).toBe('ab…')
+  expect(cut('ab😀cd', 5)).toBe('ab😀cd')
   expect(cut('ep03', 12)).toBe('ep03')
   expect(cut('手勢模特兒', 12)).toBe('手勢模特兒')
   expect(cut('abcdefghijklmn', 12)).toBe('abcdefghijk…')
@@ -50,7 +54,7 @@ test('labels are cut by width; a CJK character counts as two', () => {
 test('alerts: a card turning waiting, error or quiet, and new waiting items', () => {
   const t = Date.parse(base.updated)
   const snap = (at: number, ...cards: object[]): Snapshot =>
-    ({ dir: '/s', cards: cards.map(c => parseStatus(file(c))), conversations: [], problems: [], dirError: null, loadedAt: at })
+    ({ dir: '/s', cards: cards.map(c => parseStatus(file(c))), conversations: [], conversationsError: null, problems: [], dirError: null, loadedAt: at })
   const running = snap(t, { state: 'running', stale_after_sec: 360 })
   expect(alerts(null, running)).toEqual([])                                   // first read: baseline
   expect(alerts(running, snap(t + 60_000, { state: 'running', stale_after_sec: 360 }))).toEqual([])
@@ -230,4 +234,69 @@ test('an older collector file (no counts) draws as before', () => {
     expect(picture(collector({ counts: COUNTS }, pipeline), false)).toBeNull()
     expect(detailLines(collector({ counts: COUNTS }, pipeline))).toEqual([])
   }
+})
+
+test('time in one unit, as a glance needs it', () => {
+  const m = 60_000
+  expect(ago(20_000)).toBe('just now')
+  expect(ago(5 * m)).toBe('5m ago')
+  expect(ago(59 * m)).toBe('59m ago')
+  expect(ago(61 * m)).toBe('1h ago')
+  expect(ago(8 * 60 * m + 1 * m)).toBe('8h ago')
+  expect(ago(47 * 60 * m + 59 * m)).toBe('47h ago')
+  expect(ago(48 * 60 * m)).toBe('2d ago')
+})
+
+test('a pipeline name holds only a-z, 0-9 and -; a waiting item with no id is known by its words', () => {
+  expect(() => parseStatus(file({ pipeline: 'Music Box' }))).toThrow(/a-z/)
+  expect(parseStatus(file({ pipeline: 'collector-tech-news' })).pipeline).toBe('collector-tech-news')
+  expect(parseStatus(file({ waiting: [{ text: 'hear song 7' }] })).waiting).toEqual([{ id: 'hear song 7', text: 'hear song 7' }])
+})
+
+test('a pipeline named like an object key folds like any other', () => {
+  expect(isFolded({}, 'constructor', false)).toBe(false)
+  expect(isFolded({}, 'constructor', true)).toBe(true)
+  expect(isFolded({ constructor: true }, 'constructor', false)).toBe(true)
+})
+
+test('a stale error stays an error; a stale card otherwise is quiet', () => {
+  const t = Date.parse(base.updated)
+  expect(markOf(parseStatus(file({ state: 'error', stale_after_sec: 60 })), t + 3_600_000)).toBe('error')
+  expect(markOf(parseStatus(file({ state: 'waiting', stale_after_sec: 60 })), t + 3_600_000)).toBe('quiet')
+  expect(markOf(parseStatus(file({ state: 'running', stale_after_sec: 60 })), t)).toBe('running')
+})
+
+test('video: a stage outside the list gets no column but is named; a gate lists only its count when waiting says the rest', () => {
+  const jobs = [
+    { job: 'baibai/ep04', stage: 'final', spend_usd: 0, cap_usd: 1 },
+    { job: 'baibai/電車', stage: 'deliver', spend_usd: 0, cap_usd: 1 },
+    { job: 'baibai/ep05', stage: 'clips', spend_usd: 0, cap_usd: 1 },
+  ]
+  const s = parseStatus(file({ pipeline: 'ai-video', detail: { jobs }, waiting: [{ id: 'w', text: 'approve baibai/ep04 final' }] }))
+  const lanes = byStage(jobs as never)
+  expect(lanes.plan).toEqual([])
+  expect(Object.values(lanes).flat()).toHaveLength(2)
+  expect(unknownStages(s)).toEqual(['deliver: 電車'])
+  expect(detailLines(s)).toEqual(['clips: ep05', 'final (you): 1'])
+  const noWaiting = parseStatus(file({ pipeline: 'ai-video', detail: { jobs } }))
+  expect(detailLines(noWaiting)).toContain('final (you): ep04')
+})
+
+test('a video detail of an odd shape names nothing and throws nothing', () => {
+  for (const jobs of [{}, [null, 3, { stage: 'deliver' }], 'x']) {
+    const s = parseStatus(file({ pipeline: 'ai-video', detail: { jobs } }))
+    expect(unknownStages(s)).toEqual([])
+  }
+})
+
+test('video: a gate job the waiting lines do not name keeps its name on the terminal', () => {
+  const jobs = [
+    { job: 'baibai/ep04', stage: 'final', spend_usd: 0, cap_usd: 1 },
+    { job: 'baibai/ep06', stage: 'final', spend_usd: 0, cap_usd: 1 },
+  ]
+  const s = parseStatus(file({ pipeline: 'ai-video', detail: { jobs }, waiting: [{ id: 'w', text: 'approve ep04' }] }))
+  expect(detailLines(s)).toEqual(['final (you): ep04, ep06'])
+  const six = Array.from({ length: 6 }, (_, i) => ({ id: `w${i}`, text: `approve ep0${i}` }))
+  const many = parseStatus(file({ pipeline: 'ai-video', detail: { jobs: [{ job: 'ep05', stage: 'final', spend_usd: 0, cap_usd: 1 }] }, waiting: six }))
+  expect(detailLines(many)).toEqual(['final (you): ep05'])
 })

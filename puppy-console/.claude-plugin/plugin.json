@@ -1,6 +1,6 @@
 {
   "name": "puppy-console",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "a pane with your conversations first, then one card per production pipeline, read from small status files",
   "types": "./types/index.d.ts",
   "author": {
@@ -38,6 +38,16 @@
       "type": "string",
       "title": "Conversations",
       "description": "on: each conversation writes a short file about itself into ~/.claude/console/sessions/ (this computer only) after every turn, and the pane shows them first. off: it writes nothing.",
+      "default": "on",
+      "options": [
+        "on",
+        "off"
+      ]
+    },
+    "push": {
+      "type": "string",
+      "title": "Push",
+      "description": "on: when a conversation stops to ask you something, send a push through the app's PushNotification tool, if your permission settings already allow it (no dialog is opened). off: none.",
       "default": "on",
       "options": [
         "on",

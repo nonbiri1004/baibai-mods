@@ -16,6 +16,7 @@ export function parseStatus(text: string): Status {
   if (!isObject(v) || v.format !== 'pipeline-status') throw new Error('no "format": "pipeline-status" (an older status file?)')
   if (v.version !== 1) throw new Error(`format version ${String(v.version)}; this mod reads version 1`)
   if (typeof v.pipeline !== 'string' || !v.pipeline) throw new Error('no "pipeline"')
+  if (!/^[a-z0-9-]+$/.test(v.pipeline)) throw new Error('"pipeline" may hold only a-z, 0-9 and -')
   if (typeof v.updated !== 'string' || Number.isNaN(Date.parse(v.updated))) throw new Error('"updated" is not a time')
   if (!STATES.includes(v.state as State)) throw new Error(`"state" must be one of ${STATES.join(', ')}`)
   if (typeof v.headline !== 'string') throw new Error('no "headline"')
@@ -37,8 +38,9 @@ export function parseStatus(text: string): Status {
     last_output: last
       ? { label: last.label as string, ...(str(last.at) ? { at: str(last.at) } : {}), ...(str(last.path) ? { path: str(last.path) } : {}) }
       : null,
+    // an item with no id is known by its words, so a new one is still news
     waiting: ((v.waiting as unknown[] | undefined) ?? []).filter(isObject).map(w => ({
-      id: String(w.id ?? ''),
+      id: str(w.id) || String(w.text ?? ''),
       text: String(w.text ?? ''),
       ...(typeof w.since === 'string' ? { since: w.since } : {}),
     })),
@@ -58,12 +60,13 @@ export function sortCards(cards: Status[]): Status[] {
 
 export const titleOf = (s: Status) => s.title || s.pipeline
 
+// One unit, as precise as a glance needs: 5m ago, 8h ago, 3d ago.
 export function ago(ms: number): string {
   const min = Math.round(ms / 60_000)
   if (min < 1) return 'just now'
   if (min < 60) return `${min}m ago`
   const h = Math.floor(min / 60)
-  if (h < 48) return `${h}h ${min % 60}m ago`
+  if (h < 48) return `${h}h ago`
   return `${Math.floor(h / 24)}d ago`
 }
 
@@ -80,12 +83,18 @@ export function expandHome(path: string, home: string | undefined): string {
   return home && (path === '~' || path.startsWith('~/')) ? home + path.slice(1) : path
 }
 
-// What a card needs from you right now: its state, or "quiet" when the writer went silent.
-const markOf = (s: Status, now: number) => (isStale(s, now) ? 'quiet' : s.state)
+// The word a card shows for its state: "quiet" when the writer went silent, unless it last said
+// it broke: an error stays an error however old.
+export const markOf = (s: Status, now: number) => (isStale(s, now) && s.state !== 'error' ? 'quiet' : s.state)
+
+// Why a card went quiet, in words that don't guess the cause: the computer may sleep, the
+// pipeline may have stopped writing, or the sync may lag.
+export const quietWhy = (s: Status, now: number) =>
+  `no update for ${ago(now - Date.parse(s.updated)).replace(' ago', '')} from ${s.host ?? 'its computer'}`
 const ALERT = new Set(['waiting', 'error', 'quiet'])
 
 // The lines to tell the person, comparing the last read with this one: a card that turned
-// waiting, error or quiet, or new waiting items on a card that was already waiting.
+// waiting, error or quiet, or new waiting items on any card that was already shown.
 // No previous read (the pane just started) is a baseline, not news.
 export function alerts(prev: Snapshot | null, next: Snapshot): string[] {
   if (!prev) return []
@@ -97,11 +106,9 @@ export function alerts(prev: Snapshot | null, next: Snapshot): string[] {
     const wasMark = was ? markOf(was, prev.loadedAt) : undefined
     const items = s.waiting ?? []
     if (ALERT.has(mark) && mark !== wasMark) {
-      const why = mark === 'quiet'
-        ? `no update for ${ago(next.loadedAt - Date.parse(s.updated)).replace(' ago', '')}; is ${s.host ?? 'the computer'} asleep?`
-        : mark === 'waiting' && items[0] ? items[0].text : s.headline
+      const why = mark === 'quiet' ? quietWhy(s, next.loadedAt) : mark === 'waiting' && items[0] ? items[0].text : s.headline
       out.push(`${titleOf(s)} · ${mark}: ${why}`)
-    } else if (mark === 'waiting') {
+    } else if (was && items.length) {
       const seen = new Set((was?.waiting ?? []).map(w => w.id))
       const fresh = items.filter(w => !seen.has(w.id))
       if (fresh.length) out.push(`${titleOf(s)} · new: ${fresh[0]!.text}${fresh.length > 1 ? ` (+${fresh.length - 1} more)` : ''}`)
@@ -131,7 +138,7 @@ export function splitCards(cards: Status[], now: number): { current: Status[]; o
 // folded in the "older" group. Only a choice that differs from that default is kept, so a card
 // that moves between the groups follows its new group unless the person said otherwise.
 export const isFolded = (folds: Record<string, boolean>, pipeline: string, isOlderCard: boolean) =>
-  folds[pipeline] ?? isOlderCard
+  (Object.hasOwn(folds, pipeline) ? folds[pipeline] : undefined) ?? isOlderCard
 
 export function toggleFold(folds: Record<string, boolean>, pipeline: string, isOlderCard: boolean): Record<string, boolean> {
   const next = !isFolded(folds, pipeline, isOlderCard)

@@ -67,7 +67,7 @@ the mod draws these when `pipeline` matches; anything else in `detail` is ignore
 
 ## conversations
 
-the mod itself writes one more kind of file, one per conversation, in `~/.claude/console/sessions/<session id>.json`: on this computer only, never in the status folder, because it holds what you typed. only that conversation writes its file, one write after another, and never while holding up a turn. the pane reads them for the first card. a file there that does not parse (caught halfway through a write) keeps what the last read had.
+the mod itself writes one more kind of file, one per conversation, in `~/.claude/console/sessions/<session id>.json`: on this computer only, never in the status folder, because it holds what you typed. only that conversation writes its file, one write after another, and never while holding up a turn; it writes once more when the conversation ends. the pane reads them for the first card. a file there that does not parse (caught halfway through a write) keeps what the last read had; one whose `id` is not its file name is named at the bottom of the pane and left out.
 
 ```json
 {
@@ -76,11 +76,12 @@ the mod itself writes one more kind of file, one per conversation, in `~/.claude
   "id": "4f0c…",
   "updated": "2026-10-27T12:00:00.000Z",
   "state": "waiting",
-  "title": "the first line you typed",
+  "title": "the app's own title, or the first line you typed",
+  "isAppTitle": true,
   "project": "puppy-mods",
   "recap": "what is now true and where it stands",
   "ask": "the question the last turn left you, or null"
 }
 ```
 
-`state` is `running` (a turn is going), `waiting` (the last turn asked you something), `done` or `error`. a `running` file older than 30 minutes is shown as `done`: the conversation closed mid-turn. files older than three days are not read or shown; they stay in the folder.
+`state` is `running` (a turn is going), `waiting` (the last turn asked you something), `done` or `error`. when the conversation ends, a `running` file becomes `done`; a `/clear` also turns `waiting` into `done`. a `running` file older than six hours is shown as `done` anyway (the conversation stopped without ending, a crash). `isAppTitle` is `true` once `title` is the app's own; `isFork` is `true` for a conversation forked from another (a side question), which the card leaves out. `host` is optional. files older than three days are not shown, except a `waiting` one, shown for two weeks; they stay in the folder.

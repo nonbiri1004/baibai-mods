@@ -1,6 +1,6 @@
 import { expect, mock, test } from 'claude-code/testing'
 
-import { isWrapUp, KEEP_MS, nameOf, parseConversation, plain, recent, RUNNING_MS, shownState, wrapOf } from '../hooks/sessions'
+import { isWrapUp, KEEP_MS, KEEP_WAITING_MS, nameOf, parseConversation, plain, plainLine, recent, RUNNING_MS, shownState, wrapOf } from '../hooks/sessions'
 
 const T = Date.parse('2026-10-27T12:00:00.000Z')
 const user = (text: string) => ({ role: 'user' as const, text, toolUses: [] })
@@ -19,6 +19,20 @@ test('the name is the first thing the person typed, without the app\'s tags', ()
   expect(nameOf([user(first), said('ok'), user('next')])).toBe('我想到一個就是 console 裡放對話摘要')
   expect(nameOf([])).toBe('new conversation')
   expect([...nameOf([user('x'.repeat(200))])]).toHaveLength(60)
+  // a message carrying only tool results is not something typed
+  expect(nameOf([{ ...results, text: 'tool output' }, user('the real one')])).toBe('the real one')
+  // the app's own openers (a compaction summary, another conversation's brief) are skipped
+  const summary = 'This session is being continued from a previous conversation that ran out of context.'
+  const brief = '<system-reminder>x</system-reminder>\n\nBackground (from the session that started this one):\n背景：…'
+  expect(nameOf([user(summary), user(brief), user('看一下 console')])).toBe('看一下 console')
+  expect(nameOf([user(summary)])).toBe('new conversation')
+})
+
+test('a reply line loses its markdown marks', () => {
+  expect(plainLine('## Done\nmore', 200)).toBe('Done')
+  expect(plainLine('**Card added** to `register.tsx`', 200)).toBe('Card added to register.tsx')
+  expect(plainLine('```ts\ncode\n```', 200)).toBe('code')
+  expect(plainLine('- see [the PR](https://x)', 200)).toBe('see the PR')
 })
 
 test('a wrap_up gives the recap and the question', () => {
@@ -42,11 +56,16 @@ test('waiting first, newest first; old ones leave; a forgotten "running" is done
     parseConversation(conv({ id: 'done', state: 'done', updated: at(60_000) })),
     parseConversation(conv({ id: 'w-old', state: 'waiting', updated: at(3_600_000) })),
     parseConversation(conv({ id: 'w-new', state: 'waiting', updated: at(120_000) })),
-    parseConversation(conv({ id: 'gone', state: 'waiting', updated: at(KEEP_MS + 1) })),
+    parseConversation(conv({ id: 'w-long', state: 'waiting', updated: at(KEEP_MS + 1) })),
+    parseConversation(conv({ id: 'gone', state: 'waiting', updated: at(KEEP_WAITING_MS + 1) })),
+    parseConversation(conv({ id: 'old-done', state: 'done', updated: at(KEEP_MS + 1) })),
+    parseConversation(conv({ id: 'fork', state: 'waiting', isFork: true, updated: at(1_000) })),
     parseConversation(conv({ id: 'run', state: 'running', updated: at(30_000) })),
   ]
-  expect(recent(list, T).map(c => c.id)).toEqual(['w-new', 'w-old', 'run', 'done'])
+  // a question waits two weeks; anything else leaves after three days; a fork never shows
+  expect(recent(list, T).map(c => c.id)).toEqual(['w-new', 'w-old', 'w-long', 'run', 'done'])
   expect(shownState(parseConversation(conv({ state: 'running', updated: at(RUNNING_MS + 1) })), T)).toBe('done')
+  expect(shownState(parseConversation(conv({ state: 'running', updated: at(RUNNING_MS - 1) })), T)).toBe('running')
 })
 
 const PANE = {
@@ -88,12 +107,19 @@ test('the conversations card comes first, with what each one asks', { options: {
     const texts = (await ui.findAll({ type: 'Text' })).map(t => t.text)
     expect(texts.indexOf('conversations')).toBeLessThan(texts.indexOf('music'))
     // one waits for you: the puppy sits (a picture on the desktop, its face on the terminal)
-    if (surface === 'desktop') expect((await ui.find({ type: 'Svg' }))?.props.alt).toBe('the puppy sitting at its laptop')
+    if (surface === 'desktop') expect((await ui.find({ type: 'Svg' }))?.props.alt).toBe('the puppy sitting')
     else expect(texts.some(t => /ᴥ/.test(t ?? ''))).toBe(false)
-    expect(texts).toContain('→ Open a PR?')
+    expect(texts.some(t => /→\s*Open a PR\?/.test(t ?? ''))).toBe(true)
     expect(texts).toContain('Card added.')
-    expect(texts.some(t => /fix the bowl · done/.test(t ?? ''))).toBe(true)
+    // done ones fold behind "▸ done 1" until opened
+    expect(texts.some(t => /fix the bowl/.test(t ?? ''))).toBe(false)
+    expect((await ui.find({ key: 'show-done' }))?.text).toMatch(/^▸ done 1/)
+    await ui.press({ key: 'show-done' })
+    expect(await ui.find({ type: 'Text', text: /fix the bowl/ })).toBeTruthy()
+    await ui.press({ key: 'show-done' })
+    // a file whose id is not its name is left out, with a word
     expect(texts.some(t => /^x\b/.test(t ?? ''))).toBe(false)
+    expect(texts.some(t => /skipped sessions\/c\.json/.test(t ?? ''))).toBe(true)
     await ui.unmount()
   }
 })
@@ -139,16 +165,16 @@ test('a turn writes this conversation\'s own file: running, then where it stands
   await clock.settle()
   expect(file()).toMatchObject({ state: 'running', recap: 'Card added.', ask: null })
 
-  // a turn with no wrap_up of its own (a continuation, the terminal) never reuses the old one
+  // a turn with no wrap_up of its own keeps the last wrap_up's recap, never its question
   await $.turn.complete({ answer: 'Pushed.\nmore', durationMs: 1, isAborted: false, turnId: 't2', reason: 'answer' })
   await clock.settle()
-  expect(file()).toMatchObject({ state: 'done', recap: 'Pushed.', ask: null })
+  expect(file()).toMatchObject({ state: 'done', recap: 'Card added.', ask: null })
 
   // a subagent's wrap_up and turns are not this conversation's
   await $.tool.call({ ...wrapUpCall({ recap: 'sub', ask: 'sub?' }), agentId: 'sub' } as never)
   await $.turn.complete({ answer: 'x', durationMs: 1, isAborted: false, turnId: 't3', reason: 'answer', agentId: 'sub' })
   await clock.settle()
-  expect(file()).toMatchObject({ state: 'done', recap: 'Pushed.' })
+  expect(file()).toMatchObject({ state: 'done', recap: 'Card added.' })
 
   // /clear: a new id, a new file, nothing carried over; outside any repository, no project
   id = 'def'
