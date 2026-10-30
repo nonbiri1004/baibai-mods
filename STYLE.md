@@ -1,6 +1,6 @@
 # puppy mods style
 
-How every puppy mod looks, so they feel like one family. `puppy-pipelines` is the reference: when this file and that mod disagree, fix one of them.
+How every puppy mod looks, so they feel like one family. `puppy-console` is the reference: when this file and that mod disagree, fix one of them.
 
 ## Panes are cards
 
@@ -43,7 +43,7 @@ How every puppy mod looks, so they feel like one family. `puppy-pipelines` is th
 - Only where the surface has `Svg` (the desktop app). The terminal gets the same facts as text lines: never drop a fact because there is no picture.
 - Emoji (⏰, ✓…) keep their own colors; they are not our drawings. The greys-only rule is for icons we draw.
 - Small icons are 14×14 pixel drawings in greys only, like lofipuppy.app's `PixelIcon`; the terminal shows a text mark in their place.
-- Warm greys, light by day and dark by night with `prefers-color-scheme`. Copy the palette from `puppy-pipelines/hooks/draw.ts` (`--card`, `--line`, `--text`, `--muted`, and the soft `--ok` / `--listen` / `--reject`).
+- Warm greys, light by day and dark by night with `prefers-color-scheme`. Copy the palette from `puppy-console/hooks/draw.ts` (`--card`, `--line`, `--text`, `--muted`, and the soft `--ok` / `--listen` / `--reject`).
 - Pixel art keeps `shape-rendering="crispEdges"`.
 - The puppy's drawing comes from baibai-brand (generated, see `brand.lock.json`). Never draw or edit the puppy by hand here.
 - These mods are coding tools: the puppy keeps you company like a mascot beside you. It wears **no headphones** here; its prop is a small laptop. It types at the laptop (`typing0..5`), sits when idle and sleeps when nothing is going on. All frames come from baibai-brand's `puppy-svg.ts` (bare frames only).

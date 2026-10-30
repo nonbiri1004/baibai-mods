@@ -14,16 +14,22 @@ the pipeline cards only read. each pipeline writes one small json file into a fo
 └─────────────────────────────────────────────────────────────┘
 ```
 
-- the **conversations** card is always first. each conversation writes a short file about itself into `~/.claude/console/sessions/` when a turn starts and ends. that folder is on this computer only, never the status folder, so what you typed is not synced anywhere: its first line as a name, the folder it runs in, and the recap the desktop app's next-step box shows (in the terminal, the answer's first line). the ones that ask you something are shown with the question; the rest get one quiet line. a conversation leaves the card three days after its last turn. turn the writing off with **conversations** in `/config`.
+- the **conversations** card is always first. each conversation writes a short file about itself into `~/.claude/console/sessions/` when a turn starts and ends, and when it closes. that folder is on this computer only, never the status folder, so what you typed is not synced anywhere: its name (the app's own title, as the sidebar shows it; before the app has named it, the first thing you typed), the folder it runs in, and the recap the desktop app's next-step box shows (in the terminal, the answer's first line, without markdown).
+  - the ones that ask you something come first, with the question. running ones get one quiet line each; done ones fold into `▸ done N`.
+  - a side question forked from another conversation (`btw`) is left out: its answer is back in the conversation it came from.
+  - a conversation leaves the card three days after its last turn; one that still waits for you stays two weeks. a `/clear` ends it at once.
+  - when a conversation stops to ask you something, it sends a push through the app's PushNotification tool, if your permission settings already allow that tool (the mod checks first and sends nothing otherwise). turn it off with **push** in `/config`.
+  - turn the writing off with **conversations** in `/config`.
 - pipeline cards that wait for you come first, then errors, then running, then idle.
 - a card with no update for more than three days folds into `▸ older N` at the bottom, unless it waits for you (waiting, error, or anything in its waiting list). press it to see them.
 - press a card's name to fold it to one line (`▸`); press again to open it. the pane remembers, on this computer, across conversations and restarts, and so does the `older` group. a folded card that waits for you still says so on its line.
 - the folder is read only while the pane is open: once when you open it, then every minute. a conversation without the pane reads nothing.
 - when a card turns `waiting`, `error` or quiet, or a waiting card gets a new item, a short notice shows in the corner (once, not every minute), only while the pane is open. what changed while it was closed shows in the pane when you open it, without a notice. turn notices off with **notices** in `/config`.
-- a pipeline that promised to write every few minutes (`stale_after_sec`) and went quiet gets a "quiet" mark, so a sleeping computer doesn't look like it is still working.
+- a pipeline that promised to write every few minutes (`stale_after_sec`) and went quiet gets a "quiet" mark, so a stopped writer doesn't look like it is still working. an `error` stays an `error`, however old.
+- a file caught halfway through a write keeps its last card until the next read.
 - a file in the folder that isn't a status file is named at the bottom with the reason, never dropped without a word.
 - the folder can be a synced one (google drive, dropbox), so a pipeline on another computer gets a card too.
-- the puppy is at the top, at its little laptop: typing while a conversation is running, sitting while one waits for you, asleep when nothing goes on. the desktop draws it moving; the terminal draws the same puppy in block characters, still (34 columns × 13 rows, from baibai-brand), only when the pane is at least 26 rows tall and 34 columns wide.
+- the puppy is at the top, at its little laptop: typing while a conversation is running, sitting while one waits for you, asleep when nothing goes on. the desktop draws it moving; the terminal draws the same puppy in block characters, still (34 columns × 13 rows, from baibai-brand), only when the pane is at least 26 rows tall and 34 columns wide. the pane asks for 40 rows when it opens in the terminal.
 - the desktop app draws a small picture per card (the music card has the puppy and one square per song; the ai-video card groups jobs by review gate; an info-collector card, `collector-<profile>`, shows collected › new › scored › sent and what waits for your review in notion). the terminal shows the same as text.
 
 ## install
@@ -40,7 +46,7 @@ answer `y` to add the marketplace, then pick a scope. set **status folder** to t
 
 | command | what it does |
 | --- | --- |
-| `/console` | opens the pane and reads the folder. while the pane is open it reads again every minute; `r` reads it now |
+| `/console` | opens the pane and reads the folder. while the pane is open it reads again every minute; the `refresh` button (or `r` while the pane has focus) reads it now |
 
 ## develop
 

@@ -57,7 +57,7 @@ export type CollectorDetail = { counts?: Partial<CollectorCounts>; errors?: stri
 // A file in the folder that is not a card, and why.
 export type Problem = { file: string; reason: string }
 
-// One conversation's file in `<status folder>/sessions/` (format "session-status", version 1).
+// One conversation's file in `~/.claude/console/sessions/` (format "session-status", version 1).
 export type ConversationState = 'running' | 'waiting' | 'done' | 'error'
 export type Conversation = {
   format: 'session-status'
@@ -66,6 +66,12 @@ export type Conversation = {
   updated: string
   state: ConversationState
   title: string
+  // the title is the app's own (its sidebar's), not the first thing typed
+  isAppTitle?: true
+  // a fork of another conversation (a side question); the card leaves it out
+  isFork?: true
+  // the recap is a wrap_up's, kept when a later turn has none
+  isWrapRecap?: true
   project?: string
   host?: string
   recap: string
@@ -78,6 +84,8 @@ export type Snapshot = {
   cards: Status[]
   // the conversations of the last few days, sorted for the card; empty when none wrote yet
   conversations: Conversation[]
+  // the conversations folder could not be read (not a missing folder: that is none yet)
+  conversationsError: string | null
   problems: Problem[]
   // the folder itself could not be read (missing, not set)
   dirError: string | null
@@ -92,6 +100,10 @@ declare module 'claude-code' {
       folds: Record<string, boolean>
       // the "older" group is open
       isShowingOlder: boolean
+      // the conversations card's "done" group is open
+      isShowingDone: boolean
+      // this conversation's last write of its own file failed, and why
+      writeError: string | null
     }
   }
 }

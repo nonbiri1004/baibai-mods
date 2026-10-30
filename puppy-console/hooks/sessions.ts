@@ -8,8 +8,11 @@ import type { Conversation, ConversationState } from '../types'
 // last turn, so an archived one leaves by itself.
 export const SESSIONS = '.claude/console/sessions'
 export const KEEP_MS = 3 * 24 * 3_600_000
-// A "running" file older than this was left by a conversation that closed mid-turn.
-export const RUNNING_MS = 30 * 60_000
+// One that waits for you stays longer: a question left open over a weekend still shows.
+export const KEEP_WAITING_MS = 14 * 24 * 3_600_000
+// A "running" file older than this was left by a conversation that stopped without session.end
+// (a crash). Long enough for a long workflow; session.end marks a normal close at once.
+export const RUNNING_MS = 6 * 3_600_000
 
 const STATES: readonly ConversationState[] = ['running', 'waiting', 'done', 'error']
 
@@ -18,7 +21,15 @@ const str = (x: unknown) => (typeof x === 'string' && x.trim() ? x.trim() : unde
 
 // A user message the person typed, not one that only carries tool results.
 type Message = { role: 'user' | 'assistant'; text: string; toolUses: { tool: string; input: Record<string, unknown> }[]; toolResults?: unknown[] }
-const isPrompt = (m: Message) => m.role === 'user' && !m.toolResults?.length && plain(m.text) !== ''
+
+// Openers the app writes in the person's place: the summary after a compaction, the brief of a
+// conversation another one started. They name nothing.
+const NOT_TYPED = [/^This session is being continued from a previous conversation/, /^Background \(from the session that started this one\)/]
+const isPrompt = (m: Message) => {
+  if (m.role !== 'user' || m.toolResults?.length) return false
+  const text = plain(m.text)
+  return text !== '' && !NOT_TYPED.some(re => re.test(text))
+}
 
 // What the person typed, without the <tag>…</tag> blocks the app wraps around it
 // (system reminders, command caveats, pasted content).
@@ -31,7 +42,18 @@ export function oneLine(text: string, max: number): string {
   return [...line].length > max ? `${[...line].slice(0, max - 1).join('')}…` : line
 }
 
-// The conversation's name: the first thing the person typed in it.
+// One line of a reply, without the markdown marks a card would print as they are.
+export function plainLine(text: string, max: number): string {
+  const line = text.split('\n').map(l => l.trim()).find(l => l !== '' && !/^(```|---+|\|)/.test(l)) ?? ''
+  const bare = line
+    .replace(/^#+\s+|^[-*>]\s+|^\d+\.\s+/, '')
+    .replace(/\*\*|__|`/g, '')
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .trim()
+  return oneLine(bare, max)
+}
+
+// The conversation's name when the app has given it none yet: the first thing the person typed.
 export function nameOf(messages: Message[]): string {
   const first = messages.find(isPrompt)
   return first ? oneLine(plain(first.text), 60) : 'new conversation'
@@ -58,6 +80,9 @@ export function parseConversation(text: string): Conversation {
     updated: v.updated,
     state: v.state as ConversationState,
     title: str(v.title) ?? v.id,
+    ...(v.isAppTitle === true ? { isAppTitle: true } : {}),
+    ...(v.isFork === true ? { isFork: true } : {}),
+    ...(v.isWrapRecap === true ? { isWrapRecap: true } : {}),
     project: str(v.project),
     host: str(v.host),
     recap: str(v.recap) ?? '',
@@ -70,11 +95,15 @@ export function shownState(c: Conversation, now: number): ConversationState {
   return c.state === 'running' && now - Date.parse(c.updated) > RUNNING_MS ? 'done' : c.state
 }
 
-// The last few days only; the ones waiting for you first, then errors, running, done; newest first.
+const keepFor = (c: Conversation, now: number) => (shownState(c, now) === 'waiting' ? KEEP_WAITING_MS : KEEP_MS)
+
+// The ones the card shows: the last few days (two weeks for one that waits for you), forks left
+// out (a side question's answer is back in the conversation it came from); waiting first, then
+// errors, running, done; newest first.
 const ORDER: Record<ConversationState, number> = { waiting: 0, error: 1, running: 2, done: 3 }
 export function recent(list: Conversation[], now: number): Conversation[] {
   return list
-    .filter(c => now - Date.parse(c.updated) <= KEEP_MS)
+    .filter(c => !c.isFork && now - Date.parse(c.updated) <= keepFor(c, now))
     .sort((a, b) => ORDER[shownState(a, now)] - ORDER[shownState(b, now)] || Date.parse(b.updated) - Date.parse(a.updated))
 }
 

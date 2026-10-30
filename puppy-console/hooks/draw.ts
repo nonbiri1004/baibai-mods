@@ -13,14 +13,19 @@ const esc = (s: string) =>
 
 // Cut a label to fit; SVG text does not wrap. n is in Latin letters; a CJK character counts as two.
 const wide = (c: string) => /[\u1100-\u115f\u2e80-\ua4cf\uac00-\ud7a3\uf900-\ufaff\ufe30-\ufe4f\uff00-\uff60\uffe0-\uffe6]/.test(c)
+// Counted and cut by code point, so an emoji is never split in half; the … takes one column.
 export function cut(s: string, n: number): string {
-  let used = 0
   const chars = [...s]
-  for (let i = 0; i < chars.length; i++) {
-    used += wide(chars[i]!) ? 2 : 1
-    if (used > n) return `${chars.slice(0, i).join('').slice(0, Math.max(0, i - 1))}…`
+  const width = (c: string) => (wide(c) ? 2 : 1)
+  if (chars.reduce((sum, c) => sum + width(c), 0) <= n) return s
+  let used = 1
+  let out = ''
+  for (const c of chars) {
+    if (used + width(c) > n) break
+    used += width(c)
+    out += c
   }
-  return s
+  return `${out}…`
 }
 
 const STYLE = `<style>
@@ -128,10 +133,25 @@ export const STAGES: readonly Stage[] = ['plan', 'clips', 'voice', 'compose', 'f
 // The two review gates only you can pass.
 const GATE: ReadonlySet<Stage> = new Set(['plan', 'final'])
 
+// A stage outside the list (a newer writer's) gets no column: unknownStages names those jobs.
 export function byStage(jobs: VideoJob[]): Record<Stage, VideoJob[]> {
   const out = Object.fromEntries(STAGES.map(st => [st, [] as VideoJob[]])) as Record<Stage, VideoJob[]>
-  for (const j of jobs) (out[j.stage] ?? out.plan).push(j)
+  for (const j of jobs) if (STAGES.includes(j.stage)) out[j.stage].push(j)
   return out
+}
+
+const jobName = (j: VideoJob) => j.job.split('/').pop() ?? j.job
+
+// "deliver: 電車" for each job whose stage has no column; empty when there are none.
+// A job of an odd shape (not an object, no name) is skipped.
+export function unknownStages(s: Status): string[] {
+  if (s.pipeline !== 'ai-video') return []
+  const jobs: unknown = ((s.detail ?? {}) as VideoDetail).jobs
+  if (!Array.isArray(jobs)) return []
+  return jobs
+    .filter((j): j is VideoJob => typeof j === 'object' && j !== null && typeof (j as VideoJob).job === 'string')
+    .filter(j => !STAGES.includes(j.stage))
+    .map(j => `${String(j.stage)}: ${jobName(j)}`)
 }
 
 // One column per stage, a chip per job; the review gates have a dashed outline.
@@ -242,8 +262,12 @@ export function detailLines(s: Status): string[] {
     const jobs = d.jobs ?? []
     if (!jobs.length) return []
     const lanes = byStage(jobs)
+    // a gate whose every job is named again in the "waiting for you" lines the card shows (its
+    // first five) gives only its count here; otherwise the names, so none goes missing
+    const shownWaiting = (s.waiting ?? []).slice(0, 5).map(w => w.text)
+    const isNamedBelow = (st: Stage) => GATE.has(st) && lanes[st].every(j => shownWaiting.some(t => t.includes(jobName(j))))
     const lines = STAGES.filter(st => lanes[st].length).map(st =>
-      `${st}${GATE.has(st) ? ' (you)' : ''}: ${lanes[st].map(j => j.job.split('/').pop() ?? j.job).join(', ')}`)
+      isNamedBelow(st) ? `${st} (you): ${lanes[st].length}` : `${st}${GATE.has(st) ? ' (you)' : ''}: ${lanes[st].map(jobName).join(', ')}`)
     if (d.cap_usd) lines.push(`spent $${(d.spend_usd ?? 0).toFixed(2)} of $${d.cap_usd.toFixed(2)}`)
     return lines
   }
